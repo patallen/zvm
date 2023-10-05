@@ -299,7 +299,7 @@ pub const Tokenizer = struct {
                     else => break,
                 },
                 .string => switch (c) {
-                    '0'...'9', 'a'...'z', 'A'...'Z', '\'' => {},
+                    '0'...'9', 'a'...'z', 'A'...'Z', '\'', '.', '?', ',', '-', '+' => {},
                     '"' => {
                         self.index += 1;
                         break;
@@ -427,7 +427,6 @@ test Tokenizer {
         .{ .start = 25, .end = 26, .lineno = 2 },
     );
 
-    // var tokenizer = Tokenizer.init("\n(1 + 1 - 2.01) / \"hello\";\n!= ! <= < >= > = ==");
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .bang_eq);
     try std.testing.expectEqual(
