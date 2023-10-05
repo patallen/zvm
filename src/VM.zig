@@ -26,8 +26,13 @@ pub fn init() Self {
     };
 }
 
-pub fn interpret(self: *Self, chunk: *Chunk) InterpretResult {
-    self.chunk = chunk;
+fn compileToChunk(self: *Self, source: []const u8) !void {
+    _ = source;
+    _ = self;
+}
+
+pub fn interpret(self: *Self, source: []const u8) InterpretResult {
+    self.compileToChunk(source);
     return self.run();
 }
 
@@ -103,6 +108,7 @@ fn pop(self: *Self) Value {
 test "vm" {
     const VM = @This();
     var vm = VM.init();
+    _ = vm;
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
     try chunk.writeByte(@intFromEnum(Op.constant), 123);
@@ -116,6 +122,6 @@ test "vm" {
     try chunk.writeByte(@intFromEnum(Op.negate), 130);
     try chunk.writeByte(@intFromEnum(Op.ret), 130);
     std.debug.print(".\n\n", .{});
-    var res = vm.interpret(&chunk);
-    std.debug.print("{any}\n", .{res});
+    // var res = vm.interpret(&chunk);
+    // std.debug.print("{any}\n", .{res});
 }
