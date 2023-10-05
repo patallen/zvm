@@ -1,0 +1,56 @@
+pub const Op = enum(u8) {
+    ret,
+    constant,
+    negate,
+    add,
+    subtract,
+    multiply,
+    divide,
+};
+
+pub const Byte = u8;
+
+pub const Value = f64;
+pub const ByteList = std.ArrayList(Byte);
+pub const ValueList = std.ArrayList(Value);
+
+code: ByteList,
+constants: ValueList,
+lines: std.ArrayList(usize),
+allocator: std.mem.Allocator,
+
+const Self = @This();
+pub fn init(allocator: std.mem.Allocator) Self {
+    return .{
+        .allocator = allocator,
+        .code = ByteList.init(allocator),
+        .constants = ValueList.init(allocator),
+        .lines = std.ArrayList(usize).init(allocator),
+    };
+}
+
+pub fn deinit(self: *Self) void {
+    self.code.deinit();
+    self.constants.deinit();
+    self.lines.deinit();
+}
+
+pub fn write(self: *Self, byte: Byte, line: usize) !void {
+    try self.code.append(byte);
+    try self.lines.append(line);
+}
+
+pub fn read(self: *Self, offset: usize) Byte {
+    return self.code.items[offset];
+}
+
+pub fn addConstant(self: *Self, value: Value) !Byte {
+    try self.constants.append(value);
+    return @as(u8, @intCast(self.constants.items.len - 1));
+}
+
+pub fn getConstant(self: *Self, index: Byte) Value {
+    return self.constants.items[index];
+}
+
+const std = @import("std");

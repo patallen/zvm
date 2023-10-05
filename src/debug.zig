@@ -1,0 +1,62 @@
+const std = @import("std");
+
+const print = std.debug.print;
+
+const Chunk = @import("./Chunk.zig");
+const Op = Chunk.Op;
+
+pub fn disassembleChunk(chunk: *Chunk, name: []const u8) !void {
+    var offset: usize = 0;
+    print(".\n", .{});
+    print("======== {s} ========\n", .{name});
+    while (offset < chunk.code.items.len) {
+        offset = try disassembleInstruction(chunk, offset);
+    }
+}
+
+pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
+    const byte = chunk.read(offset);
+    print(" {d:0>4}: ", .{offset});
+    var current_line = chunk.lines.items[offset];
+
+    if (offset > 0 and current_line == chunk.lines.items[offset - 1]) {
+        print("    |  ", .{});
+    } else {
+        print(" {d:4}  ", .{current_line});
+    }
+
+    return switch (@as(Op, @enumFromInt(byte))) {
+        .ret => try simpleInstruction("OP_RETURN", offset),
+        .constant => try constantInstruction(chunk, offset),
+        .negate => try simpleInstruction("OP_NEGATE", offset),
+        .add => try simpleInstruction("OP_ADD", offset),
+        .subtract => try simpleInstruction("OP_SUBTRACT", offset),
+        .multiply => try simpleInstruction("OP_MULTIPLY", offset),
+        .divide => try simpleInstruction("OP_DIVIDE", offset),
+    };
+}
+
+pub fn simpleInstruction(name: []const u8, offset: usize) !usize {
+    print("{s}\n", .{name});
+    return offset + 1;
+}
+
+pub fn constantInstruction(chunk: *Chunk, offset: usize) !usize {
+    const idx = chunk.read(offset + 1);
+    const value = chunk.getConstant(idx);
+    print("{s:<16}{d}\n", .{ "OP_CONSTANT", value });
+    return offset + 2;
+}
+
+test "debug" {
+    var allocator = std.testing.allocator;
+    var chunk = Chunk.init(allocator);
+    defer chunk.deinit();
+
+    try chunk.write(@intFromEnum(Op.constant), 123);
+    try chunk.write(try chunk.addConstant(420.69), 123);
+    try chunk.write(@intFromEnum(Op.constant), 124);
+    try chunk.write(try chunk.addConstant(69), 124);
+    try chunk.write(@intFromEnum(Op.ret), 124);
+    try disassembleChunk(&chunk, "main");
+}
