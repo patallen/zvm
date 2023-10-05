@@ -15,7 +15,7 @@ pub fn disassembleChunk(chunk: *Chunk, name: []const u8) !void {
 }
 
 pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
-    const byte = chunk.read(offset);
+    const op = chunk.readOp(offset);
     print(" {d:0>4}: ", .{offset});
     var current_line = chunk.lines.items[offset];
 
@@ -25,7 +25,7 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
         print(" {d:4}  ", .{current_line});
     }
 
-    return switch (@as(Op, @enumFromInt(byte))) {
+    return switch (op) {
         .ret => try simpleInstruction("OP_RETURN", offset),
         .constant => try constantInstruction(chunk, offset),
         .negate => try simpleInstruction("OP_NEGATE", offset),
@@ -42,7 +42,7 @@ pub fn simpleInstruction(name: []const u8, offset: usize) !usize {
 }
 
 pub fn constantInstruction(chunk: *Chunk, offset: usize) !usize {
-    const idx = chunk.read(offset + 1);
+    const idx = chunk.readByte(offset + 1);
     const value = chunk.getConstant(idx);
     print("{s:<16}{d}\n", .{ "OP_CONSTANT", value });
     return offset + 2;
@@ -53,10 +53,10 @@ test "debug" {
     var chunk = Chunk.init(allocator);
     defer chunk.deinit();
 
-    try chunk.write(@intFromEnum(Op.constant), 123);
-    try chunk.write(try chunk.addConstant(420.69), 123);
-    try chunk.write(@intFromEnum(Op.constant), 124);
-    try chunk.write(try chunk.addConstant(69), 124);
-    try chunk.write(@intFromEnum(Op.ret), 124);
+    try chunk.writeOp(.constant, 123);
+    try chunk.writeByte(try chunk.addConstant(420.69), 123);
+    try chunk.writeOp(.constant, 124);
+    try chunk.writeByte(try chunk.addConstant(69), 124);
+    try chunk.writeOp(.ret, 124);
     try disassembleChunk(&chunk, "main");
 }

@@ -84,7 +84,7 @@ fn readOp(self: *Self) Op {
     return op;
 }
 fn readByte(self: *Self) u8 {
-    var byte = self.chunk.?.read(self.ip);
+    var byte = self.chunk.?.readByte(self.ip);
     self.ip += 1;
     return byte;
 }
@@ -105,16 +105,16 @@ test "vm" {
     var vm = VM.init();
     var chunk = Chunk.init(std.testing.allocator);
     defer chunk.deinit();
-    try chunk.write(@intFromEnum(Op.constant), 123);
-    try chunk.write(try chunk.addConstant(420.69), 123);
-    try chunk.write(@intFromEnum(Op.constant), 124);
-    try chunk.write(try chunk.addConstant(69), 124);
-    try chunk.write(@intFromEnum(Op.add), 125);
-    try chunk.write(@intFromEnum(Op.constant), 126);
-    try chunk.write(try chunk.addConstant(2.0), 126);
-    try chunk.write(@intFromEnum(Op.divide), 127);
-    try chunk.write(@intFromEnum(Op.negate), 130);
-    try chunk.write(@intFromEnum(Op.ret), 130);
+    try chunk.writeByte(@intFromEnum(Op.constant), 123);
+    try chunk.writeByte(try chunk.addConstant(420.69), 123);
+    try chunk.writeByte(@intFromEnum(Op.constant), 124);
+    try chunk.writeByte(try chunk.addConstant(69), 124);
+    try chunk.writeByte(@intFromEnum(Op.add), 125);
+    try chunk.writeByte(@intFromEnum(Op.constant), 126);
+    try chunk.writeByte(try chunk.addConstant(2.0), 126);
+    try chunk.writeByte(@intFromEnum(Op.divide), 127);
+    try chunk.writeByte(@intFromEnum(Op.negate), 130);
+    try chunk.writeByte(@intFromEnum(Op.ret), 130);
     std.debug.print(".\n\n", .{});
     var res = vm.interpret(&chunk);
     std.debug.print("{any}\n", .{res});

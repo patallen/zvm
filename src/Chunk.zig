@@ -35,13 +35,21 @@ pub fn deinit(self: *Self) void {
     self.lines.deinit();
 }
 
-pub fn write(self: *Self, byte: Byte, line: usize) !void {
+pub fn writeByte(self: *Self, byte: Byte, line: usize) !void {
     try self.code.append(byte);
     try self.lines.append(line);
 }
 
-pub fn read(self: *Self, offset: usize) Byte {
+pub fn writeOp(self: *Self, op: Op, line: usize) !void {
+    try self.writeByte(@intFromEnum(op), line);
+}
+
+pub fn readByte(self: *Self, offset: usize) Byte {
     return self.code.items[offset];
+}
+
+pub fn readOp(self: *Self, offset: usize) Op {
+    return @enumFromInt(self.readByte(offset));
 }
 
 pub fn addConstant(self: *Self, value: Value) !Byte {
