@@ -1,17 +1,23 @@
+import readline
 from compiler import Compiler
 from vm import VM
 
 
 def repl():
+    readline.set_pre_input_hook(readline.redisplay)
+
     while True:
-        print("> ", end="")
-        cp = Compiler(input())
+        cp = Compiler(input("> "))
         chunk = cp.compile()
         if cp.parse.has_error:
             continue
         vm = VM(chunk)
         vm.run()
-        print(vm.stack)
+        if vm.stack:
+            print(vm.stack.pop())
 
 
-repl()
+try:
+    repl()
+except KeyboardInterrupt:
+    exit(0)

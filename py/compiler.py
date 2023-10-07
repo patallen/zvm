@@ -64,6 +64,11 @@ class Compiler:
 
     def compute_atom(self):
         current = self.parse.current
+        if current.ty == TokenType.MINUS:
+            self.parse.advance()
+            self.compute_expression(1)
+            self.chunk.write_byte(Op.NEGATE)
+            return
         if current.ty == TokenType.L_PAREN:
             self.parse.advance()
             self.compute_expression(1)

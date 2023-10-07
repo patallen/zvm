@@ -8,6 +8,7 @@ if typing.TYPE_CHECKING:
 class Op(int, Enum):
     PUSH = auto()
     POP = auto()
+    NEGATE = auto()
     ADD = auto()
     SUB = auto()
     MULT = auto()
@@ -65,9 +66,7 @@ class VM:
                     b = self.stack.pop()
                     a = self.stack.pop()
                     self.stack.append(a**b)
-                case Op.CALL:
-                    raise NotImplementedError("Op.CALL not implemented")
-                case Op.JMP:
-                    raise NotImplementedError("Op.JMP not implemented")
-                case Op.JMPNZ:
-                    raise NotImplementedError("Op.JMPNZ not implemented")
+                case Op.NEGATE:
+                    self.stack.append(-self.stack.pop())
+                case _:
+                    raise NotImplementedError(f"{Op(op_byte).name} is not implemented")

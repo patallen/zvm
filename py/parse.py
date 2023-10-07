@@ -39,7 +39,7 @@ class Parse:
     def error_at(self, token: Token, message: str) -> None:
         error = ParseError(token, message)
         if not self.panic_mode:
-            print(error)
+            print(f"{error}")
 
         self.errors.append(error)
         self.has_error = True
