@@ -3,6 +3,7 @@ from enum import Enum, auto
 
 
 class TokenType(str, Enum):
+    INVALID = "X"
     L_PAREN = "("
     R_PAREN = ")"
     PLUS = "+"
@@ -17,6 +18,8 @@ class TokenType(str, Enum):
 @dataclass
 class Token:
     ty: TokenType
+    line: int
+    start: int
     value: int = None
 
 
@@ -31,15 +34,17 @@ class Tokenizer:
         self.source = source
         self.start = 0
         self.index = 0
+        self.line = 1
 
     def make_token(self, ty: TokenType):
         self.index += 1
         str_val = self.source[self.start : self.index]
+        token = Token(ty=ty, value=str_val, start=self.start, line=self.line)
         self.start = self.index
-        return Token(ty=ty, value=str_val)
+        return token
 
     def scan_token(self) -> Token:
-        token = Token(ty=TokenType.EOF)
+        token = Token(ty=TokenType.EOF, line=self.line, start=self.start)
         state = State.START
 
         while True:
@@ -47,8 +52,13 @@ class Tokenizer:
                 if self.is_at_end():
                     break
                 c = self.source[self.index]
-                if c == " ":
+                if c in " \t\r":
                     self.index += 1
+                    self.start = self.index
+                    continue
+                if c in "\n":
+                    self.index += 1
+                    self.line += 1
                     self.start = self.index
                     continue
                 if c == "^":
@@ -69,6 +79,8 @@ class Tokenizer:
                     state = State.NUM_INT
                     self.index += 1
                     continue
+                else:
+                    return self.make_token(ty=TokenType.INVALID)
             elif state == State.NUM_INT:
                 if self.is_at_end():
                     return self.make_token(TokenType.NUMBER)

@@ -19,8 +19,6 @@ PRECEDENCES = {
     TokenType.CARET: OpInfo(3, "r"),
 }
 
-debug = open("debug.log", "w")
-
 
 class Compiler:
     def __init__(self, source: str):
@@ -36,11 +34,13 @@ class Compiler:
         return self.chunk
 
     def compute_expression(self, min_prec: int):
-        debug.write(
-            f"compute_expression current={self.parse.current}, previous={self.parse.previous}"
-        )
         if self.parse.current.ty == TokenType.EOF:
             return
+
+        if self.parse.current.ty == TokenType.INVALID:
+            self.parse.error_at_current("Invalid token")
+            return
+
         lhs = self.compute_atom()
         while True:
             current = self.parse.current
@@ -68,17 +68,18 @@ class Compiler:
             self.parse.advance()
             self.compute_expression(1)
             if self.parse.current.ty != TokenType.R_PAREN:
-                raise Exception(
-                    f"expected closing paren, got '{self.parse.current.ty}'"
-                )
+                self.parse.error_at_current(f"Expected closing paren")
             self.parse.advance()
             return
 
+        if current.ty == TokenType.R_PAREN:
+            self.parse.error_at_current(f"Invalid token")
+
         if current.ty == TokenType.EOF:
-            raise Exception("Source ended unexpectedly")
+            self.parse.error_at_current("Source ended unexpectedly.")
 
         if current.ty in PRECEDENCES:
-            raise Exception(f"Expected an atom, got: {current.ty}")
+            self.parse.error_at_current(f"Expected an atom")
 
         if current.ty == TokenType.NUMBER:
             self.parse.advance()

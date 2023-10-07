@@ -7,6 +7,8 @@ def repl():
         print("> ", end="")
         cp = Compiler(input())
         chunk = cp.compile()
+        if cp.parse.has_error:
+            continue
         vm = VM(chunk)
         vm.run()
         print(vm.stack)
