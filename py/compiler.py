@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from chunk import Chunk
 from tokenizer import TokenType
 from vm import Op
-from parser import Parse
+from parse import Parse
 
 
 @dataclass
@@ -21,6 +21,7 @@ PRECEDENCES = {
 
 debug = open("debug.log", "w")
 
+
 class Compiler:
     def __init__(self, source: str):
         self.parse = Parse(source)
@@ -35,7 +36,9 @@ class Compiler:
         return self.chunk
 
     def compute_expression(self, min_prec: int):
-        debug.write(f"compute_expression current={self.parse.current}, previous={self.parse.previous}")
+        debug.write(
+            f"compute_expression current={self.parse.current}, previous={self.parse.previous}"
+        )
         if self.parse.current.ty == TokenType.EOF:
             return
         lhs = self.compute_atom()
@@ -46,7 +49,6 @@ class Compiler:
                 or current.ty not in PRECEDENCES
                 or PRECEDENCES[current.ty].prec < min_prec
             ):
-                print(f"BREAKING: '{current.ty}'")
                 break
 
             assert current.ty in PRECEDENCES
@@ -66,7 +68,9 @@ class Compiler:
             self.parse.advance()
             self.compute_expression(1)
             if self.parse.current.ty != TokenType.R_PAREN:
-                raise Exception(f"expected closing paren, got '{self.parse.current.ty}'")
+                raise Exception(
+                    f"expected closing paren, got '{self.parse.current.ty}'"
+                )
             self.parse.advance()
             return
 
@@ -78,7 +82,7 @@ class Compiler:
 
         if current.ty == TokenType.NUMBER:
             self.parse.advance()
-            index = self.chunk.add_const(current.value)
+            index = self.chunk.add_const(float(current.value))
             self.chunk.write_byte(Op.CONST)
             self.chunk.write_byte(index)
 
@@ -103,5 +107,3 @@ class Compiler:
 if __name__ == "__main__":
     cp = Compiler("1 + 2 * 3 + 2 / 12")
     cp.compile()
-    print(cp.chunk.code)
-    print(cp.chunk.constants)

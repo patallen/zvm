@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, auto
 
 
 class TokenType(str, Enum):
@@ -20,65 +20,96 @@ class Token:
     value: int = None
 
 
+class State(Enum):
+    START = auto()
+    NUM_INT = auto()
+    NUM_FLOAT = auto()
+
+
 class Tokenizer:
     def __init__(self, source: str) -> None:
         self.source = source
-        self.tok_i = 0
+        self.start = 0
+        self.index = 0
+
+    def make_token(self, ty: TokenType):
+        self.index += 1
+        str_val = self.source[self.start : self.index]
+        self.start = self.index
+        return Token(ty=ty, value=str_val)
 
     def scan_token(self) -> Token:
         token = Token(ty=TokenType.EOF)
-        if self.is_at_end():
-            return token
+        state = State.START
 
-        c = self.advance()
-        if c == " ":
-            c = self.skip_whitespace()
-
-        if c == "^":
-            return Token(ty=TokenType.CARET)
-        if c == "(":
-            return Token(ty=TokenType.L_PAREN)
-        if c == ")":
-            return Token(ty=TokenType.R_PAREN)
-        if c == "+":
-            return Token(ty=TokenType.PLUS)
-        if c == "-":
-            return Token(ty=TokenType.MINUS)
-        if c == "*":
-            return Token(ty=TokenType.ASTERISK)
-        if c == "/":
-            return Token(ty=TokenType.SLASH)
-        if c in "0123456789":
-            tok = self.parse_number()
-            return tok
-
-    def skip_whitespace(self) -> str:
-        c = self.peek()
-        while c in "\n\t\r ":
-            c = self.advance()
-        print("ended on: ", c)
-        return c
-
-    def parse_number(self) -> Token:
-        start = self.tok_i - 1
-
-        while not self.is_at_end():
-            c = self.peek()
-            if c not in "0123456789":
-                break
-            c = self.advance()
-
-        str_val = self.source[start : self.tok_i]
-        tok = Token(ty=TokenType.NUMBER, value=float(str_val))
-        return tok
+        while True:
+            if state == State.START:
+                if self.is_at_end():
+                    break
+                c = self.source[self.index]
+                if c == " ":
+                    self.index += 1
+                    self.start = self.index
+                    continue
+                if c == "^":
+                    return self.make_token(ty=TokenType.CARET)
+                if c == "(":
+                    return self.make_token(ty=TokenType.L_PAREN)
+                if c == ")":
+                    return self.make_token(ty=TokenType.R_PAREN)
+                if c == "+":
+                    return self.make_token(ty=TokenType.PLUS)
+                if c == "-":
+                    return self.make_token(ty=TokenType.MINUS)
+                if c == "*":
+                    return self.make_token(ty=TokenType.ASTERISK)
+                if c == "/":
+                    return self.make_token(ty=TokenType.SLASH)
+                if c in "0123456789":
+                    state = State.NUM_INT
+                    self.index += 1
+                    continue
+            elif state == State.NUM_INT:
+                if self.is_at_end():
+                    return self.make_token(TokenType.NUMBER)
+                c = self.source[self.index]
+                if c == ".":
+                    state = State.NUM_FLOAT
+                    self.index += 1
+                    continue
+                if c in "0123456789":
+                    self.index += 1
+                    continue
+                else:
+                    self.index -= 1
+                    return self.make_token(TokenType.NUMBER)
+            elif state == State.NUM_FLOAT:
+                if self.is_at_end():
+                    return self.make_token(TokenType.NUMBER)
+                c = self.source[self.index]
+                if c in "0123456789":
+                    self.index += 1
+                    continue
+                else:
+                    self.index -= 1
+                    return self.make_token(TokenType.NUMBER)
+            else:
+                raise Exception("UNEXPECTD STATE")
+        return token
 
     def is_at_end(self) -> bool:
-        return self.tok_i >= len(self.source) - 1
+        return self.index >= len(self.source)
 
     def advance(self) -> str:
-        c = self.source[self.tok_i]
-        self.tok_i += 1
+        c = self.source[self.index]
+        self.index += 1
         return c
-    
+
     def peek(self) -> str:
-        return self.source[self.tok_i]
+        return self.source[self.index]
+
+    def dump_state(self):
+        start = self.start
+        index = self.index
+        source = self.source
+        print(f"{start=} {index=} {source=}")

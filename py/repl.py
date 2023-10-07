@@ -8,9 +8,8 @@ def repl():
         cp = Compiler(input())
         chunk = cp.compile()
         vm = VM(chunk)
-        print(chunk.code)
         vm.run()
-        print(vm.stack.pop())
+        print(vm.stack)
 
 
 repl()
