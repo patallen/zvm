@@ -35,7 +35,7 @@ class TokenizerTests(TestCase):
         self.assertEqual(token.ty, TokenType.R_PAREN)
 
         token = tokenizer.scan_token()
-        self.assertEqual(token.ty, TokenType.ASTERISK)
+        self.assertEqual(token.ty, TokenType.STAR)
 
         token = tokenizer.scan_token()
         self.assertEqual(token.ty, TokenType.NUMBER)
@@ -58,3 +58,27 @@ class TokenizerTests(TestCase):
 
         token = tokenizer.scan_token()
         self.assertEqual(token.ty, TokenType.EOF)
+
+    def test_multi_char_tokens(self):
+        tokenizer = Tokenizer("! != < <= > >= = == * **")
+
+        token = tokenizer.scan_token()
+        self.assertEqual(token.ty, TokenType.BANG)
+        token = tokenizer.scan_token()
+        self.assertEqual(token.ty, TokenType.BANG_EQ)
+        token = tokenizer.scan_token()
+        self.assertEqual(token.ty, TokenType.LT)
+        token = tokenizer.scan_token()
+        self.assertEqual(token.ty, TokenType.LT_EQ)
+        token = tokenizer.scan_token()
+        self.assertEqual(token.ty, TokenType.GT)
+        token = tokenizer.scan_token()
+        self.assertEqual(token.ty, TokenType.GT_EQ)
+        token = tokenizer.scan_token()
+        self.assertEqual(token.ty, TokenType.EQ)
+        token = tokenizer.scan_token()
+        self.assertEqual(token.ty, TokenType.EQ_EQ)
+        token = tokenizer.scan_token()
+        self.assertEqual(token.ty, TokenType.STAR)
+        token = tokenizer.scan_token()
+        self.assertEqual(token.ty, TokenType.STAR_STAR)

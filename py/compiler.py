@@ -1,8 +1,20 @@
+from typing import Any
 from dataclasses import dataclass
 from chunk import Chunk
 from tokenizer import TokenType
 from vm import Op
 from parse import Parse
+from enum import Enum, auto
+
+
+@dataclass
+class Value:
+    class Tag(Enum):
+        BOOLEAN = auto()
+        NUMBER = auto()
+
+    tag: Tag
+    value: Any
 
 
 @dataclass
@@ -12,11 +24,13 @@ class OpInfo:
 
 
 PRECEDENCES = {
+    TokenType.EQ_EQ: OpInfo(0, "l"),
+    TokenType.BANG_EQ: OpInfo(0, "l"),
     TokenType.PLUS: OpInfo(1, "l"),
     TokenType.MINUS: OpInfo(1, "l"),
-    TokenType.ASTERISK: OpInfo(2, "l"),
+    TokenType.STAR: OpInfo(2, "l"),
     TokenType.SLASH: OpInfo(2, "l"),
-    TokenType.CARET: OpInfo(3, "r"),
+    TokenType.STAR_STAR: OpInfo(3, "r"),
 }
 
 
@@ -30,7 +44,7 @@ class Compiler:
 
     def compile(self) -> Chunk:
         self.parse.advance()
-        self.compute_expression(1)
+        self.compute_expression(0)
         return self.chunk
 
     def compute_expression(self, min_prec: int):
@@ -69,6 +83,11 @@ class Compiler:
             self.compute_expression(1)
             self.chunk.write_byte(Op.NEGATE)
             return
+        if current.ty == TokenType.BANG:
+            self.parse.advance()
+            self.compute_expression(1)
+            self.chunk.write_byte(Op.NOT)
+            return
         if current.ty == TokenType.L_PAREN:
             self.parse.advance()
             self.compute_expression(1)
@@ -86,6 +105,15 @@ class Compiler:
         if current.ty in PRECEDENCES:
             self.parse.error_at_current(f"Expected an atom")
 
+        if current.ty == TokenType.KW_FALSE:
+            self.parse.advance()
+            self.chunk.write_byte(Op.FALSE)
+        if current.ty == TokenType.KW_TRUE:
+            self.parse.advance()
+            self.chunk.write_byte(Op.TRUE)
+        if current.ty == TokenType.KW_NULL:
+            self.parse.advance()
+            self.chunk.write_byte(Op.NULL)
         if current.ty == TokenType.NUMBER:
             self.parse.advance()
             index = self.chunk.add_const(float(current.value))
@@ -94,8 +122,9 @@ class Compiler:
 
     def compute_op(self, op, lhs, rhs):
         op_val = None
+        do_not = False
         match op:
-            case TokenType.ASTERISK:
+            case TokenType.STAR:
                 op_val = Op.MULT
             case TokenType.SLASH:
                 op_val = Op.DIV
@@ -103,11 +132,18 @@ class Compiler:
                 op_val = Op.ADD
             case TokenType.MINUS:
                 op_val = Op.SUB
-            case TokenType.CARET:
+            case TokenType.STAR_STAR:
                 op_val = Op.POW
+            case TokenType.EQ_EQ:
+                op_val = Op.EQUALS
+            case TokenType.BANG_EQ:
+                op_val = Op.EQUALS
+                do_not = True
             case _:
                 raise Exception(f"{op} is not an arithmetic op")
         self.chunk.write_byte(op_val)
+        if do_not:
+            self.chunk.write_byte(Op.NOT)
 
 
 if __name__ == "__main__":

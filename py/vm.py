@@ -6,8 +6,13 @@ if typing.TYPE_CHECKING:
 
 
 class Op(int, Enum):
+    EQUALS = auto()
+    TRUE = auto()
+    FALSE = auto()
+    NULL = auto()
     PUSH = auto()
     POP = auto()
+    NOT = auto()
     NEGATE = auto()
     ADD = auto()
     SUB = auto()
@@ -39,9 +44,14 @@ class VM:
             op_byte = self.read_byte()
 
             match Op(op_byte):
+                case Op.NULL:
+                    self.stack.append(None)
+                case Op.FALSE:
+                    self.stack.append(False)
+                case Op.TRUE:
+                    self.stack.append(True)
                 case Op.RET:
                     self.ip = self.stack.pop()
-                    break
                 case Op.CONST:
                     self.stack.append(self.chunk.get_const(self.read_byte()))
                 case Op.POP:
@@ -68,5 +78,12 @@ class VM:
                     self.stack.append(a**b)
                 case Op.NEGATE:
                     self.stack.append(-self.stack.pop())
+                case Op.NOT:
+                    val = self.stack.pop()
+                    self.stack.append(not (bool(val)))
+                case Op.EQUALS:
+                    a = self.stack.pop()
+                    b = self.stack.pop()
+                    self.stack.append(a == b)
                 case _:
                     raise NotImplementedError(f"{Op(op_byte).name} is not implemented")
