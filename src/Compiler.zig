@@ -6,6 +6,8 @@ const Parse = @import("./Parse.zig");
 const Allocator = std.mem.Allocator;
 const Value = @import("./value.zig").Value;
 
+const UNARY_PRECEDENCE = 5;
+
 const OpInfo = struct {
     prec: u8,
     assoc: enum { left, right },
@@ -140,15 +142,15 @@ fn computeAtom(self: *Self) error{ ChunkWriteError, InvalidCharacter }!void {
     var current = self.p.current;
     if (current.tag == .minus) {
         self.p.advance();
-        try self.computeExpression(1);
+        try self.computeExpression(UNARY_PRECEDENCE);
         try self.emitOp(.negate);
     } else if (current.tag == .bang) {
         self.p.advance();
-        try self.computeExpression(1);
+        try self.computeExpression(UNARY_PRECEDENCE);
         try self.emitOp(.not);
     } else if (current.tag == .l_paren) {
         self.p.advance();
-        try self.computeExpression(1);
+        try self.computeExpression(0);
         self.consume(.r_paren, "Expected closing paren");
     } else if (current.tag == .r_paren) {
         self.p.errorAtCurrent("Invalid token");

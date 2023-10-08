@@ -47,7 +47,7 @@ pub fn interpret(self: *Self, source: []const u8) InterpretResult {
     self.compileToChunk(source) catch {
         return .err;
     };
-    // debug.disassembleChunk(&self.chunk, "chunk") catch {};
+    debug.disassembleChunk(&self.chunk, "chunk") catch {};
     return self.run();
 }
 
@@ -104,7 +104,11 @@ pub fn run(self: *Self) InterpretResult {
                 if (a.type != b.type) {
                     std.debug.print("CANNOT COMPARE VALUES OF DIFFERENT TYPE\n", .{});
                 } else {
-                    self.push(Value.boolean(a.as.number == b.as.number));
+                    self.push(switch (a.type) {
+                        .bool => Value.boolean(a.as.bool == b.as.bool),
+                        .number => Value.boolean(a.as.number == b.as.number),
+                        .null => Value.boolean(true),
+                    });
                 }
             },
             .greater => {
@@ -175,20 +179,6 @@ fn pop(self: *Self) Value {
 test "vm" {
     const VM = @This();
     var vm = VM.init();
-    _ = vm;
-    var chunk = Chunk.init(std.testing.allocator);
-    defer chunk.deinit();
-    try chunk.writeByte(@intFromEnum(Op.constant), 123);
-    try chunk.writeByte(try chunk.addConstant(420.69), 123);
-    try chunk.writeByte(@intFromEnum(Op.constant), 124);
-    try chunk.writeByte(try chunk.addConstant(69), 124);
-    try chunk.writeByte(@intFromEnum(Op.add), 125);
-    try chunk.writeByte(@intFromEnum(Op.constant), 126);
-    try chunk.writeByte(try chunk.addConstant(2.0), 126);
-    try chunk.writeByte(@intFromEnum(Op.divide), 127);
-    try chunk.writeByte(@intFromEnum(Op.negate), 130);
-    try chunk.writeByte(@intFromEnum(Op.ret), 130);
-    std.debug.print(".\n\n", .{});
-    // var res = vm.interpret(&chunk);
-    // std.debug.print("{any}\n", .{res});
+    var res = vm.interpret("!(5 - 4 > 3 * 2 == !null)");
+    _ = res;
 }

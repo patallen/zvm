@@ -3,6 +3,7 @@ const std = @import("std");
 const print = std.debug.print;
 
 const Chunk = @import("./Chunk.zig");
+const Value = @import("./value.zig").Value;
 const Op = Chunk.Op;
 
 pub fn disassembleChunk(chunk: *Chunk, name: []const u8) !void {
@@ -62,9 +63,9 @@ test "debug" {
     defer chunk.deinit();
 
     try chunk.writeOp(.constant, 123);
-    try chunk.writeByte(try chunk.addConstant(420.69), 123);
+    try chunk.writeByte(try chunk.addConstant(Value.number(420.69)), 123);
     try chunk.writeOp(.constant, 124);
-    try chunk.writeByte(try chunk.addConstant(69), 124);
+    try chunk.writeByte(try chunk.addConstant(Value.number(69)), 124);
     try chunk.writeOp(.ret, 124);
     try disassembleChunk(&chunk, "main");
 }
