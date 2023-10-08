@@ -360,7 +360,6 @@ fn isAlphanumeric(self: *Self, c: u8) bool {
 
 fn getKeyword(self: *Self, start: usize, end: usize) ?Token.Tag {
     var string = self.buffer[start..end];
-    std.debug.print("looking for '{s}'\n", .{string});
     return KEYWORDS.get(string);
 }
 

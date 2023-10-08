@@ -13,7 +13,9 @@ fn repl() !void {
         var input = try stdin.readUntilDelimiterAlloc(allocator, '\n', 512);
         var res = vm.interpret(input[0..]);
         _ = res;
-        try stdout.print("{d}\n", .{vm.stack[vm.sp - 1]});
+        if (vm.sp > 0) {
+            try stdout.print("{any}\n", .{vm.stack[vm.sp - 1]});
+        }
     }
 }
 

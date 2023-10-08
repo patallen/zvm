@@ -18,7 +18,6 @@ pub const Op = enum(u8) {
 
 pub const Byte = u8;
 
-pub const Value = f64;
 pub const ByteList = std.ArrayList(Byte);
 pub const ValueList = std.ArrayList(Value);
 
@@ -78,3 +77,4 @@ pub fn getConstant(self: *Self, index: Byte) Value {
 }
 
 const std = @import("std");
+const Value = @import("./value.zig").Value;

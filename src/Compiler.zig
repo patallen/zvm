@@ -4,6 +4,7 @@ const Tokenizer = @import("./Tokenizer.zig");
 const Chunk = @import("./Chunk.zig");
 const Parse = @import("./Parse.zig");
 const Allocator = std.mem.Allocator;
+const Value = @import("./value.zig").Value;
 
 const OpInfo = struct {
     prec: u8,
@@ -77,7 +78,7 @@ fn emitReturn(self: *Self) !void {
     try self.chunk.writeOp(.kw_return, self.p.previous.loc.lineno);
 }
 
-fn emitConstant(self: *Self, value: Chunk.Value) !void {
+fn emitConstant(self: *Self, value: Value) !void {
     try self.emitOp(.constant);
     try self.emitByte(try self.chunk.addConstant(value));
 }
@@ -173,7 +174,7 @@ fn computeAtom(self: *Self) error{ ChunkWriteError, InvalidCharacter }!void {
                 self.p.advance();
                 var str = self.source[current.loc.start..current.loc.end];
                 const value = try std.fmt.parseFloat(f64, str);
-                try self.emitConstant(value);
+                try self.emitConstant(Value.number(value));
             },
             else => {
                 std.debug.print("reached 'unreachable' atom token:{any}: '{s}'\n", .{ current.tag, self.source[current.loc.start..current.loc.end] });

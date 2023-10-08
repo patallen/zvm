@@ -2,7 +2,7 @@ const std = @import("std");
 const debug = @import("./debug.zig");
 const Chunk = @import("./Chunk.zig");
 const Op = @import("./Chunk.zig").Op;
-const Value = @import("./Chunk.zig").Value;
+const Value = @import("./value.zig").Value;
 const Tokenizer = @import("./Tokenizer.zig");
 const Compiler = @import("./Compiler.zig");
 
@@ -19,7 +19,7 @@ pub const InterpretResult = enum {
 const Self = @This();
 
 pub fn init() Self {
-    var stack = [_]Value{0} ** 256;
+    var stack = [_]Value{Value.number(0)} ** 256;
     return .{
         .ip = 0,
         .chunk = undefined,
@@ -38,7 +38,7 @@ fn compileToChunk(self: *Self, source: []const u8) !void {
 
 pub fn resetChunk(self: *Self, chunk: *Chunk) void {
     self.chunk = chunk;
-    self.stack = [_]Value{0} ** 256;
+    self.stack = [_]Value{Value.number(0)} ** 256;
     self.ip = 0;
     self.sp = 0;
 }
@@ -47,14 +47,14 @@ pub fn interpret(self: *Self, source: []const u8) InterpretResult {
     self.compileToChunk(source) catch {
         return .err;
     };
-    debug.disassembleChunk(&self.chunk, "chunk") catch {};
+    // debug.disassembleChunk(&self.chunk, "chunk") catch {};
     return self.run();
 }
 
 fn dumpStack(self: *Self) void {
     std.debug.print(" [", .{});
     for (0..self.sp) |i| {
-        std.debug.print("{d}", .{self.stack[i]});
+        std.debug.print("{any}", .{self.stack[i]});
         if (i != self.sp - 1) {
             std.debug.print(" | ", .{});
         }
@@ -64,73 +64,91 @@ fn dumpStack(self: *Self) void {
 
 pub fn run(self: *Self) InterpretResult {
     while (self.ip < self.chunk.code.items.len) {
-        // _ = try debug.disassembleInstruction(self.chunk.self.ip);
         var instruction = self.readOp();
         switch (instruction) {
             .ret => {
-                std.debug.print("{d}\n", .{self.pop()});
+                std.debug.print("{any}\n", .{self.pop()});
             },
             .constant => {
                 var constant = self.chunk.getConstant(self.readByte());
                 self.push(constant);
             },
             .negate => {
-                self.push(-self.pop());
+                self.push(Value.number(-self.pop().as.number));
             },
             .add => {
-                const operand = self.pop();
-                self.push(self.pop() + operand);
+                const operand = self.pop().as.number;
+                self.push(Value.number(self.pop().as.number + operand));
             },
             .subtract => {
-                const operand = self.pop();
-                self.push(self.pop() - operand);
+                const operand = self.pop().as.number;
+                self.push(Value.number(self.pop().as.number - operand));
             },
             .divide => {
-                const operand = self.pop();
-                self.push(self.pop() / operand);
+                const operand = self.pop().as.number;
+                self.push(Value.number(self.pop().as.number / operand));
             },
             .multiply => {
-                const operand = self.pop();
-                self.push(self.pop() * operand);
+                const operand = self.pop().as.number;
+                self.push(Value.number(self.pop().as.number * operand));
             },
             .pow => {
-                var operand = self.pop();
-                self.push(std.math.pow(f64, self.pop(), operand));
+                var operand = self.pop().as.number;
+                var operator = self.pop().as.number;
+                self.push(Value.number(std.math.pow(f64, operator, operand)));
             },
             .equals => {
                 // TODO: We need Value unions
-                self.push(if (self.pop() == self.pop()) 1 else 0);
+                var b = self.pop();
+                var a = self.pop();
+                if (a.type != b.type) {
+                    std.debug.print("CANNOT COMPARE VALUES OF DIFFERENT TYPE\n", .{});
+                } else {
+                    self.push(Value.boolean(a.as.number == b.as.number));
+                }
             },
             .greater => {
-                // TODO: We need Value unions
-                var operand = self.pop();
-                self.push(if (self.pop() > operand) 1 else 0);
+                var b = self.pop();
+                var a = self.pop();
+                if (a.type != .number or b.type != .number) {
+                    std.debug.print("Can only test '>' on two numbers.\n", .{});
+                } else {
+                    self.push(Value.boolean(a.as.number > b.as.number));
+                }
             },
             .less => {
-                // TODO: We need Value unions
-                var operand = self.pop();
-                self.push(if (self.pop() < operand) 1 else 0);
+                var b = self.pop();
+                var a = self.pop();
+                if (a.type != .number or b.type != .number) {
+                    std.debug.print("Can only test '<' on two numbers.", .{});
+                } else {
+                    self.push(Value.boolean(a.as.number < b.as.number));
+                }
             },
             .false => {
-                // TODO: We need Value unions
-                self.push(0);
+                self.push(Value.boolean(false));
             },
             .true => {
-                // TODO: We need Value unions
-                self.push(1);
+                self.push(Value.boolean(true));
             },
             .null => {
-                // TODO: We need Value unions
-                self.push(0);
+                self.push(Value.null());
             },
             .not => {
-                // TODO: We need Value unions
-                self.push(if (self.pop() == 0) 1 else 0);
+                self.push(Value.boolean(!valIsTruthy(self.pop())));
             },
         }
     }
-    self.dumpStack();
+    // self.dumpStack();
     return .ok;
+}
+
+fn valIsTruthy(val: Value) bool {
+    return switch (val.type) {
+        .null => false,
+        .bool => val.as.bool,
+        .number => val.as.number > 0,
+    };
 }
 
 fn readOp(self: *Self) Op {

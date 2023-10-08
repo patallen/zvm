@@ -52,7 +52,7 @@ pub fn simpleInstruction(name: []const u8, offset: usize) !usize {
 pub fn constantInstruction(chunk: *Chunk, offset: usize) !usize {
     const idx = chunk.readByte(offset + 1);
     const value = chunk.getConstant(idx);
-    print("{s:<16}{d}\n", .{ "OP_CONSTANT", value });
+    print("{s:<16}{any}\n", .{ "OP_CONSTANT", value });
     return offset + 2;
 }
 
