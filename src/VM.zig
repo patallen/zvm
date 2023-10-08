@@ -29,6 +29,7 @@ pub fn init() Self {
 }
 
 fn compileToChunk(self: *Self, source: []const u8) !void {
+    // TODO: This is not being deinitialized... lifetimes are weird. Fix it.
     var compiler = Compiler.init(std.heap.page_allocator, source);
 
     var hadError = try compiler.compile();

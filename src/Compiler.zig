@@ -51,7 +51,6 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn compile(self: *Self) !bool {
-    self.p.advance();
     try self.computeExpression(0);
     return !self.hadError;
 }
@@ -93,6 +92,7 @@ fn number(self: *Self) !void {
 }
 
 fn computeExpression(self: *Self, min_prec: usize) !void {
+    self.p.advance();
     if (self.p.current.tag == .eof) return;
     if (self.p.current.tag == .invalid) {
         self.p.errorAtCurrent("Invalid token");
@@ -108,7 +108,6 @@ fn computeExpression(self: *Self, min_prec: usize) !void {
                 break;
             }
             var next_min_prec = if (op_info.assoc == .left) op_info.prec + 1 else op_info.prec;
-            self.p.advance();
             try self.computeExpression(next_min_prec);
             try self.computeOp(current);
         } else {
@@ -138,51 +137,50 @@ fn computeOp(self: *Self, token: Tokenizer.Token) !void {
     }
 }
 
+fn computeUnaryExpression(self: *Self, op: Chunk.Op) !void {
+    try self.computeExpression(UNARY_PRECEDENCE);
+    try self.emitOp(op);
+}
+
 fn computeAtom(self: *Self) error{ ChunkWriteError, InvalidCharacter }!void {
     var current = self.p.current;
-    if (current.tag == .minus) {
-        self.p.advance();
-        try self.computeExpression(UNARY_PRECEDENCE);
-        try self.emitOp(.negate);
-    } else if (current.tag == .bang) {
-        self.p.advance();
-        try self.computeExpression(UNARY_PRECEDENCE);
-        try self.emitOp(.not);
-    } else if (current.tag == .l_paren) {
-        self.p.advance();
-        try self.computeExpression(0);
-        self.consume(.r_paren, "Expected closing paren");
-    } else if (current.tag == .r_paren) {
-        self.p.errorAtCurrent("Invalid token");
-    } else if (current.tag == .eof) {
-        self.p.errorAtCurrent("Source ended unexpectedly");
-    } else if (getOpInfo(current)) |_| {
+    if (getOpInfo(current) != null) {
         self.p.errorAtCurrent("Expected an atom");
-    } else {
-        switch (current.tag) {
-            .kw_false => {
-                self.p.advance();
-                try self.emitOp(.false);
-            },
-            .kw_true => {
-                self.p.advance();
-                try self.emitOp(.true);
-            },
-            .kw_null => {
-                self.p.advance();
-                try self.emitOp(.null);
-            },
-            .number_literal => {
-                self.p.advance();
-                var str = self.source[current.loc.start..current.loc.end];
-                const value = try std.fmt.parseFloat(f64, str);
-                try self.emitConstant(Value.number(value));
-            },
-            else => {
-                std.debug.print("reached 'unreachable' atom token:{any}: '{s}'\n", .{ current.tag, self.source[current.loc.start..current.loc.end] });
-                unreachable;
-            },
-        }
+    }
+    switch (current.tag) {
+        .minus => try self.computeUnaryExpression(.negate),
+        .bang => try self.computeUnaryExpression(.not),
+        .l_paren => {
+            try self.computeExpression(0);
+            self.consume(.r_paren, "Expected closing paren");
+        },
+        .r_paren => self.p.errorAtCurrent("Invalid token"),
+        .eof => self.p.errorAtCurrent("Source ended unexpectedly"),
+        .kw_false => {
+            self.p.advance();
+            try self.emitOp(.false);
+        },
+        .kw_true => {
+            self.p.advance();
+            try self.emitOp(.true);
+        },
+        .kw_null => {
+            self.p.advance();
+            try self.emitOp(.null);
+        },
+        .number_literal => {
+            self.p.advance();
+            var str = self.source[current.loc.start..current.loc.end];
+            const value = try std.fmt.parseFloat(f64, str);
+            try self.emitConstant(Value.number(value));
+        },
+        else => {
+            std.debug.print("reached 'unreachable' atom token:{any}: '{s}'\n", .{
+                current.tag,
+                self.source[current.loc.start..current.loc.end],
+            });
+            unreachable;
+        },
     }
 }
 
