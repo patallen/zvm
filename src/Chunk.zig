@@ -2,6 +2,7 @@ pub const Op = enum(u8) {
     ret,
     constant,
     negate,
+    not,
     add,
     subtract,
     multiply,

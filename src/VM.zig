@@ -3,9 +3,11 @@ const debug = @import("./debug.zig");
 const Chunk = @import("./Chunk.zig");
 const Op = @import("./Chunk.zig").Op;
 const Value = @import("./Chunk.zig").Value;
+const Tokenizer = @import("./Tokenizer.zig");
+const Compiler = @import("./Compiler.zig");
 
 ip: usize = 0,
-chunk: ?*Chunk = null,
+chunk: *Chunk = undefined,
 stack: [256]Value,
 sp: u8,
 
@@ -20,19 +22,30 @@ pub fn init() Self {
     var stack = [_]Value{0} ** 256;
     return .{
         .ip = 0,
-        .chunk = null,
+        .chunk = undefined,
         .stack = stack,
         .sp = 0,
     };
 }
 
 fn compileToChunk(self: *Self, source: []const u8) !void {
-    _ = source;
     _ = self;
+    var compiler = Compiler.init(std.heap.page_allocator, source);
+
+    var hadError = try compiler.compile();
+    std.debug.print("had error: {any}\n", .{hadError});
 }
 
-pub fn interpret(self: *Self, source: []const u8) InterpretResult {
-    self.compileToChunk(source);
+pub fn resetChunk(self: *Self, chunk: *Chunk) void {
+    self.chunk = chunk;
+    self.stack = [_]Value{0} ** 256;
+    self.ip = 0;
+    self.sp = 0;
+}
+
+pub fn interpret(self: *Self, source: []const u8, chunk: *Chunk) InterpretResult {
+    self.resetChunk(chunk);
+    try self.compileToChunk(source);
     return self.run();
 }
 
@@ -48,16 +61,16 @@ fn dumpStack(self: *Self) void {
 }
 
 pub fn run(self: *Self) InterpretResult {
-    while (self.ip < self.chunk.?.code.items.len) {
+    while (self.ip < self.chunk.code.items.len) {
         self.dumpStack();
-        _ = try debug.disassembleInstruction(self.chunk.?, self.ip);
+        // _ = try debug.disassembleInstruction(self.chunk.self.ip);
         var instruction = self.readOp();
         switch (instruction) {
             .ret => {
                 std.debug.print("{d}\n", .{self.pop()});
             },
             .constant => {
-                var constant = self.chunk.?.getConstant(self.readByte());
+                var constant = self.chunk.getConstant(self.readByte());
                 self.push(constant);
             },
             .negate => {
@@ -79,6 +92,9 @@ pub fn run(self: *Self) InterpretResult {
                 const operand = self.pop();
                 self.push(self.pop() * operand);
             },
+            .not => {
+                self.push(if (self.pop() == 0) 1 else 0);
+            },
         }
     }
     return .ok;
@@ -89,7 +105,7 @@ fn readOp(self: *Self) Op {
     return op;
 }
 fn readByte(self: *Self) u8 {
-    var byte = self.chunk.?.readByte(self.ip);
+    var byte = self.chunk.readByte(self.ip);
     self.ip += 1;
     return byte;
 }

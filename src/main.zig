@@ -1,6 +1,8 @@
 const std = @import("std");
+const VM = @import("./VM.zig");
+const Chunk = @import("./Chunk.zig");
 
-fn repl() !void {
+fn repl(vm: *VM) !void {
     var allocator = std.heap.page_allocator;
     var stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
@@ -8,12 +10,15 @@ fn repl() !void {
     while (true) {
         try stdout.print("zvm > ", .{});
         var input = try stdin.readUntilDelimiterAlloc(allocator, '\n', 512);
-        try stdout.print("IN: {s}\n", .{input});
+        var chunk = Chunk.init(std.heap.page_allocator);
+        var res = vm.interpret(input[0..], &chunk);
+        _ = res;
     }
 }
 
 pub fn main() !void {
-    try repl();
+    var vm = VM.init();
+    try repl(&vm);
 }
 
 test "simple test" {

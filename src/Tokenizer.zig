@@ -17,6 +17,8 @@ const KEYWORDS = std.ComptimeStringMap(Token.Tag, .{
     .{ "super", .kw_super },
 });
 
+const Self = @This();
+
 pub const Token = struct {
     tag: Tag,
     loc: Loc,
@@ -98,265 +100,264 @@ pub const Token = struct {
     }
 };
 
-pub const Tokenizer = struct {
-    buffer: [:0]const u8,
-    index: usize,
-    current: usize,
-    lineno: usize,
+buffer: []const u8,
+index: usize,
+current: usize,
+lineno: usize,
 
-    prev: Token = undefined,
-    curr: Token = undefined,
+prev: Token = undefined,
+curr: Token = undefined,
 
-    pub fn init(buffer: [:0]const u8) Tokenizer {
-        return .{
-            .buffer = buffer,
-            .index = 0,
-            .current = 0,
-            .lineno = 1,
-        };
-    }
+pub fn init(buffer: []const u8) Self {
+    return .{
+        .buffer = buffer,
+        .index = 0,
+        .current = 0,
+        .lineno = 1,
+    };
+}
 
-    pub fn previous(self: *Tokenizer) Token {
-        return self.prev;
-    }
+pub fn previous(self: *Self) Token {
+    return self.prev;
+}
 
-    pub fn scanToken(self: *Tokenizer) Token {
-        var token = Token{
-            .tag = .eof,
-            .loc = .{
-                .lineno = self.lineno,
-                .start = self.index,
-                .end = undefined,
-            },
-        };
-        var state: State = .start;
+pub fn scanToken(self: *Self) Token {
+    var token = Token{
+        .tag = .eof,
+        .loc = .{
+            .lineno = self.lineno,
+            .start = self.index,
+            .end = undefined,
+        },
+    };
+    var state: State = .start;
 
-        while (true) : (self.index += 1) {
-            const c = self.buffer[self.index];
-            switch (state) {
-                .start => switch (c) {
-                    0 => break,
-                    '\n' => {
-                        token.loc.start = self.index + 1;
-                        self.lineno += 1;
-                        token.loc.lineno = self.lineno;
-                    },
-                    ' ', '\t', '\r' => {
-                        token.loc.start = self.index + 1;
-                    },
-                    '!' => {
-                        state = .bang;
-                        token.tag = .bang;
-                    },
-                    '<' => {
-                        state = .less;
-                        token.tag = .lt;
-                    },
-                    '>' => {
-                        state = .greater;
-                        token.tag = .gt;
-                    },
-                    '=' => {
-                        state = .equal;
-                        token.tag = .eq;
-                    },
-                    ';' => {
-                        token.tag = .semicolon;
-                        self.index += 1;
-                        break;
-                    },
-                    '(' => {
-                        token.tag = .l_paren;
-                        self.index += 1;
-                        break;
-                    },
-                    ')' => {
-                        token.tag = .r_paren;
-                        self.index += 1;
-                        break;
-                    },
-                    '0'...'9' => {
-                        state = .number_int;
-                        token.tag = .number_literal;
-                    },
-                    '"' => {
-                        state = .string;
-                        token.tag = .string_literal;
-                    },
-                    '+' => {
-                        token.tag = .plus;
-                        self.index += 1;
-                        break;
-                    },
-                    '-' => {
-                        token.tag = .minus;
-                        self.index += 1;
-                        break;
-                    },
-                    '*' => {
-                        token.tag = .asterisk;
-                        self.index += 1;
-                        break;
-                    },
-                    '/' => {
-                        // Could potentially be a comment
-                        token.tag = .slash;
-                        state = .slash;
-                    },
-                    '{' => {
-                        token.tag = .l_brace;
-                        self.index += 1;
-                        break;
-                    },
-                    '}' => {
-                        token.tag = .r_brace;
-                        self.index += 1;
-                        break;
-                    },
-                    else => {
-                        if (self.isAlpha(c)) {
-                            state = .ident;
-                            token.tag = .ident;
-                        } else {
-                            token.tag = .invalid;
-                            token.loc.end = self.index;
-                            self.index += 1;
-                            return token;
-                        }
-                    },
+    while (true) : (self.index += 1) {
+        if (self.index >= self.buffer.len) break;
+        const c = self.buffer[self.index];
+        switch (state) {
+            .start => switch (c) {
+                '\n' => {
+                    token.loc.start = self.index + 1;
+                    self.lineno += 1;
+                    token.loc.lineno = self.lineno;
                 },
-                .ident => {
-                    // if it is not alphanumeric, the ident is over. Check for keyword & break at previous byte.
-                    if (!self.isAlphanumeric(c)) {
-                        if (self.getKeyword(token.loc.start, self.index)) |tag| {
-                            token.tag = tag;
-                        }
-                        break;
-                    }
+                ' ', '\t', '\r' => {
+                    token.loc.start = self.index + 1;
                 },
-                .slash => switch (c) {
-                    '/' => {
-                        // Now a comment... eat until newline or EOF
-                        state = .comment;
-                    },
-                    else => break,
+                '!' => {
+                    state = .bang;
+                    token.tag = .bang;
                 },
-                .comment => switch (c) {
-                    '\n', 0 => {
-                        // Found EOF or newline... go back one and let the tokenizer handle it above
-                        self.index -= 1;
-                        token.loc.start = self.index;
-                        token.tag = .eof;
-                        state = .start;
-                    },
-                    else => {},
+                '<' => {
+                    state = .less;
+                    token.tag = .lt;
                 },
-                .greater => switch (c) {
-                    '=' => {
-                        token.tag = .gt_eq;
-                        token.loc.end = self.index + 1;
-                        self.index += 1;
-                        break;
-                    },
-                    else => break,
+                '>' => {
+                    state = .greater;
+                    token.tag = .gt;
                 },
-                .less => switch (c) {
-                    '=' => {
-                        token.tag = .lt_eq;
-                        token.loc.end = self.index + 1;
-                        self.index += 1;
-                        break;
-                    },
-                    else => break,
+                '=' => {
+                    state = .equal;
+                    token.tag = .eq;
                 },
-                .equal => switch (c) {
-                    '=' => {
-                        token.tag = .eq_eq;
-                        token.loc.end = self.index + 1;
-                        self.index += 1;
-                        break;
-                    },
-                    else => break,
+                ';' => {
+                    token.tag = .semicolon;
+                    self.index += 1;
+                    break;
                 },
-                .bang => switch (c) {
-                    '=' => {
-                        token.tag = .bang_eq;
-                        token.loc.end = self.index + 1;
-                        self.index += 1;
-                        break;
-                    },
-                    else => break,
+                '(' => {
+                    token.tag = .l_paren;
+                    self.index += 1;
+                    break;
                 },
-                .number_int => switch (c) {
-                    '.' => {
-                        state = .number_dot;
-                    },
-                    '0'...'9' => {},
-                    else => break,
+                ')' => {
+                    token.tag = .r_paren;
+                    self.index += 1;
+                    break;
                 },
-                .number_dot => switch (c) {
-                    '0'...'9' => {},
-                    else => break,
+                '0'...'9' => {
+                    state = .number_int;
+                    token.tag = .number_literal;
                 },
-                .string => switch (c) {
-                    '0'...'9', 'a'...'z', 'A'...'Z', '\'', '.', '?', ',', '-', '+' => {},
-                    '"' => {
-                        self.index += 1;
-                        break;
-                    },
-                    else => {
+                '"' => {
+                    state = .string;
+                    token.tag = .string_literal;
+                },
+                '+' => {
+                    token.tag = .plus;
+                    self.index += 1;
+                    break;
+                },
+                '-' => {
+                    token.tag = .minus;
+                    self.index += 1;
+                    break;
+                },
+                '*' => {
+                    token.tag = .asterisk;
+                    self.index += 1;
+                    break;
+                },
+                '/' => {
+                    // Could potentially be a comment
+                    token.tag = .slash;
+                    state = .slash;
+                },
+                '{' => {
+                    token.tag = .l_brace;
+                    self.index += 1;
+                    break;
+                },
+                '}' => {
+                    token.tag = .r_brace;
+                    self.index += 1;
+                    break;
+                },
+                else => {
+                    if (self.isAlpha(c)) {
+                        state = .ident;
+                        token.tag = .ident;
+                    } else {
                         token.tag = .invalid;
                         token.loc.end = self.index;
                         self.index += 1;
                         return token;
-                    },
+                    }
                 },
-            }
+            },
+            .ident => {
+                // if it is not alphanumeric, the ident is over. Check for keyword & break at previous byte.
+                if (!self.isAlphanumeric(c)) {
+                    if (self.getKeyword(token.loc.start, self.index)) |tag| {
+                        token.tag = tag;
+                    }
+                    break;
+                }
+            },
+            .slash => switch (c) {
+                '/' => {
+                    // Now a comment... eat until newline or EOF
+                    state = .comment;
+                },
+                else => break,
+            },
+            .comment => switch (c) {
+                '\n', 0 => {
+                    // Found EOF or newline... go back one and let the tokenizer handle it above
+                    self.index -= 1;
+                    token.loc.start = self.index;
+                    token.tag = .eof;
+                    state = .start;
+                },
+                else => {},
+            },
+            .greater => switch (c) {
+                '=' => {
+                    token.tag = .gt_eq;
+                    token.loc.end = self.index + 1;
+                    self.index += 1;
+                    break;
+                },
+                else => break,
+            },
+            .less => switch (c) {
+                '=' => {
+                    token.tag = .lt_eq;
+                    token.loc.end = self.index + 1;
+                    self.index += 1;
+                    break;
+                },
+                else => break,
+            },
+            .equal => switch (c) {
+                '=' => {
+                    token.tag = .eq_eq;
+                    token.loc.end = self.index + 1;
+                    self.index += 1;
+                    break;
+                },
+                else => break,
+            },
+            .bang => switch (c) {
+                '=' => {
+                    token.tag = .bang_eq;
+                    token.loc.end = self.index + 1;
+                    self.index += 1;
+                    break;
+                },
+                else => break,
+            },
+            .number_int => switch (c) {
+                '.' => {
+                    state = .number_dot;
+                },
+                '0'...'9' => {},
+                else => break,
+            },
+            .number_dot => switch (c) {
+                '0'...'9' => {},
+                else => break,
+            },
+            .string => switch (c) {
+                '0'...'9', 'a'...'z', 'A'...'Z', '\'', '.', '?', ',', '-', '+' => {},
+                '"' => {
+                    self.index += 1;
+                    break;
+                },
+                else => {
+                    token.tag = .invalid;
+                    token.loc.end = self.index;
+                    self.index += 1;
+                    return token;
+                },
+            },
         }
-        token.loc.end = self.index;
-        self.prev = self.curr;
-        self.curr = token;
-        return token;
     }
+    token.loc.end = self.index;
+    self.prev = self.curr;
+    self.curr = token;
+    return token;
+}
 
-    fn isAlpha(self: *Tokenizer, c: u8) bool {
-        _ = self;
-        return (c >= 'a' and c <= 'z') or
-            (c >= 'A' and c <= 'Z') or
-            c == '_';
-    }
+fn isAlpha(self: *Self, c: u8) bool {
+    _ = self;
+    return (c >= 'a' and c <= 'z') or
+        (c >= 'A' and c <= 'Z') or
+        c == '_';
+}
 
-    fn isNumeric(self: *Tokenizer, c: u8) bool {
-        _ = self;
-        return c >= '0' and c <= '9';
-    }
+fn isNumeric(self: *Self, c: u8) bool {
+    _ = self;
+    return c >= '0' and c <= '9';
+}
 
-    fn isAlphanumeric(self: *Tokenizer, c: u8) bool {
-        return self.isAlpha(c) or self.isNumeric(c);
-    }
+fn isAlphanumeric(self: *Self, c: u8) bool {
+    return self.isAlpha(c) or self.isNumeric(c);
+}
 
-    fn getKeyword(self: *Tokenizer, start: usize, end: usize) ?Token.Tag {
-        var string = self.buffer[start..end];
-        return KEYWORDS.get(string);
-    }
+fn getKeyword(self: *Self, start: usize, end: usize) ?Token.Tag {
+    var string = self.buffer[start..end];
+    return KEYWORDS.get(string);
+}
 
-    const State = enum {
-        start,
-        string,
-        number_int,
-        number_dot,
-        greater,
-        less,
-        equal,
-        bang,
-        slash,
-        comment,
-        ident,
-    };
+const State = enum {
+    start,
+    string,
+    number_int,
+    number_dot,
+    greater,
+    less,
+    equal,
+    bang,
+    slash,
+    comment,
+    ident,
 };
 
-test Tokenizer {
-    var tokenizer = Tokenizer.init("\n(1 + 1 - 2.01) / \"hello\";\n!= ! <= < >= > = ==// comment\nclass\n");
+test "Tokenizer" {
+    const Tokenizer = @This();
+    var tokenizer = Tokenizer.init("\n(-1 + 1 - 2.01) / \"hello\";\n!= ! <= < >= > = ==// comment\nclass\n");
     var token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .l_paren);
     try std.testing.expectEqual(
@@ -365,135 +366,142 @@ test Tokenizer {
     );
 
     token = tokenizer.scanToken();
-    try std.testing.expectEqual(token.tag, .number_literal);
+    try std.testing.expectEqual(token.tag, .minus);
     try std.testing.expectEqual(
         token.loc,
         .{ .start = 2, .end = 3, .lineno = 2 },
     );
 
     token = tokenizer.scanToken();
+    try std.testing.expectEqual(token.tag, .number_literal);
+    try std.testing.expectEqual(
+        token.loc,
+        .{ .start = 3, .end = 4, .lineno = 2 },
+    );
+
+    token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .plus);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 4, .end = 5, .lineno = 2 },
+        .{ .start = 5, .end = 6, .lineno = 2 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .number_literal);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 6, .end = 7, .lineno = 2 },
+        .{ .start = 7, .end = 8, .lineno = 2 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .minus);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 8, .end = 9, .lineno = 2 },
+        .{ .start = 9, .end = 10, .lineno = 2 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .number_literal);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 10, .end = 14, .lineno = 2 },
+        .{ .start = 11, .end = 15, .lineno = 2 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .r_paren);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 14, .end = 15, .lineno = 2 },
+        .{ .start = 15, .end = 16, .lineno = 2 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .slash);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 16, .end = 17, .lineno = 2 },
+        .{ .start = 17, .end = 18, .lineno = 2 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .string_literal);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 18, .end = 25, .lineno = 2 },
+        .{ .start = 19, .end = 26, .lineno = 2 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .semicolon);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 25, .end = 26, .lineno = 2 },
+        .{ .start = 26, .end = 27, .lineno = 2 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .bang_eq);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 27, .end = 29, .lineno = 3 },
+        .{ .start = 28, .end = 30, .lineno = 3 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .bang);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 30, .end = 31, .lineno = 3 },
+        .{ .start = 31, .end = 32, .lineno = 3 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .lt_eq);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 32, .end = 34, .lineno = 3 },
+        .{ .start = 33, .end = 35, .lineno = 3 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .lt);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 35, .end = 36, .lineno = 3 },
+        .{ .start = 36, .end = 37, .lineno = 3 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .gt_eq);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 37, .end = 39, .lineno = 3 },
+        .{ .start = 38, .end = 40, .lineno = 3 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .gt);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 40, .end = 41, .lineno = 3 },
+        .{ .start = 41, .end = 42, .lineno = 3 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .eq);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 42, .end = 43, .lineno = 3 },
+        .{ .start = 43, .end = 44, .lineno = 3 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .eq_eq);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 44, .end = 46, .lineno = 3 },
+        .{ .start = 45, .end = 47, .lineno = 3 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .kw_class);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 57, .end = 62, .lineno = 4 },
+        .{ .start = 58, .end = 63, .lineno = 4 },
     );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .eof);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 63, .end = 63, .lineno = 5 },
+        .{ .start = 64, .end = 64, .lineno = 5 },
     );
 }
