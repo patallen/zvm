@@ -7,7 +7,7 @@ const Tokenizer = @import("./Tokenizer.zig");
 const Compiler = @import("./Compiler.zig");
 
 ip: usize = 0,
-chunk: *Chunk = undefined,
+chunk: Chunk = undefined,
 stack: [256]Value,
 sp: u8,
 
@@ -29,11 +29,11 @@ pub fn init() Self {
 }
 
 fn compileToChunk(self: *Self, source: []const u8) !void {
-    _ = self;
     var compiler = Compiler.init(std.heap.page_allocator, source);
 
     var hadError = try compiler.compile();
-    std.debug.print("had error: {any}\n", .{hadError});
+    _ = hadError;
+    self.chunk = compiler.chunk;
 }
 
 pub fn resetChunk(self: *Self, chunk: *Chunk) void {
@@ -43,9 +43,11 @@ pub fn resetChunk(self: *Self, chunk: *Chunk) void {
     self.sp = 0;
 }
 
-pub fn interpret(self: *Self, source: []const u8, chunk: *Chunk) InterpretResult {
-    self.resetChunk(chunk);
-    try self.compileToChunk(source);
+pub fn interpret(self: *Self, source: []const u8) InterpretResult {
+    self.compileToChunk(source) catch {
+        return .err;
+    };
+    debug.disassembleChunk(&self.chunk, "chunk") catch {};
     return self.run();
 }
 
@@ -62,7 +64,6 @@ fn dumpStack(self: *Self) void {
 
 pub fn run(self: *Self) InterpretResult {
     while (self.ip < self.chunk.code.items.len) {
-        self.dumpStack();
         // _ = try debug.disassembleInstruction(self.chunk.self.ip);
         var instruction = self.readOp();
         switch (instruction) {
@@ -92,11 +93,43 @@ pub fn run(self: *Self) InterpretResult {
                 const operand = self.pop();
                 self.push(self.pop() * operand);
             },
+            .pow => {
+                var operand = self.pop();
+                self.push(std.math.pow(f64, self.pop(), operand));
+            },
+            .equals => {
+                // TODO: We need Value unions
+                self.push(if (self.pop() == self.pop()) 1 else 0);
+            },
+            .greater => {
+                // TODO: We need Value unions
+                var operand = self.pop();
+                self.push(if (self.pop() > operand) 1 else 0);
+            },
+            .less => {
+                // TODO: We need Value unions
+                var operand = self.pop();
+                self.push(if (self.pop() < operand) 1 else 0);
+            },
+            .false => {
+                // TODO: We need Value unions
+                self.push(0);
+            },
+            .true => {
+                // TODO: We need Value unions
+                self.push(1);
+            },
+            .null => {
+                // TODO: We need Value unions
+                self.push(0);
+            },
             .not => {
+                // TODO: We need Value unions
                 self.push(if (self.pop() == 0) 1 else 0);
             },
         }
     }
+    self.dumpStack();
     return .ok;
 }
 

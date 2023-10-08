@@ -2,23 +2,23 @@ const std = @import("std");
 const VM = @import("./VM.zig");
 const Chunk = @import("./Chunk.zig");
 
-fn repl(vm: *VM) !void {
+fn repl() !void {
     var allocator = std.heap.page_allocator;
     var stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
 
     while (true) {
         try stdout.print("zvm > ", .{});
+        var vm = VM.init();
         var input = try stdin.readUntilDelimiterAlloc(allocator, '\n', 512);
-        var chunk = Chunk.init(std.heap.page_allocator);
-        var res = vm.interpret(input[0..], &chunk);
+        var res = vm.interpret(input[0..]);
         _ = res;
+        try stdout.print("{d}\n", .{vm.stack[vm.sp - 1]});
     }
 }
 
 pub fn main() !void {
-    var vm = VM.init();
-    try repl(&vm);
+    try repl();
 }
 
 test "simple test" {

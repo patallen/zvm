@@ -34,6 +34,13 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
         .multiply => try simpleInstruction("OP_MULTIPLY", offset),
         .divide => try simpleInstruction("OP_DIVIDE", offset),
         .not => try simpleInstruction("OP_NOT", offset),
+        .equals => try simpleInstruction("OP_EQUALS", offset),
+        .pow => try simpleInstruction("OP_POW", offset),
+        .null => try simpleInstruction("OP_NULL", offset),
+        .false => try simpleInstruction("OP_FALSE", offset),
+        .true => try simpleInstruction("OP_TRUE", offset),
+        .greater => try simpleInstruction("OP_GREATER", offset),
+        .less => try simpleInstruction("OP_LESS", offset),
     };
 }
 

@@ -7,7 +7,7 @@ const KEYWORDS = std.ComptimeStringMap(Token.Tag, .{
     .{ "else", .kw_else },
     .{ "true", .kw_true },
     .{ "false", .kw_false },
-    .{ "nil", .kw_nil },
+    .{ "null", .kw_null },
     .{ "and", .kw_and },
     .{ "or", .kw_or },
     .{ "var", .kw_var },
@@ -35,7 +35,8 @@ pub const Token = struct {
         r_brace,
         l_paren,
         r_paren,
-        asterisk,
+        star,
+        star_star,
         minus,
         plus,
         semicolon,
@@ -62,7 +63,7 @@ pub const Token = struct {
         kw_else,
         kw_true,
         kw_false,
-        kw_nil,
+        kw_null,
         kw_and,
         kw_or,
         kw_var,
@@ -78,6 +79,9 @@ pub const Token = struct {
 
     pub fn tagLexeme(self: *Token) []const u8 {
         return switch (self.tag) {
+            .kw_true => "true",
+            .kw_false => "false",
+            .kw_null => "null",
             .bang => "!",
             .bang_eq => "!=",
             .eq => "=",
@@ -92,10 +96,12 @@ pub const Token = struct {
             .r_brace => "}",
             .plus => "+",
             .minus => "-",
-            .asterisk => "*",
+            .star => "*",
+            .star_star => "**",
             .slash => "/",
             .semicolon => ";",
-            else => "",
+            .not => "!",
+            else => "<tagLexeme not implemented>",
         };
     }
 };
@@ -133,10 +139,18 @@ pub fn scanToken(self: *Self) Token {
     var state: State = .start;
 
     while (true) : (self.index += 1) {
-        if (self.index >= self.buffer.len) break;
-        const c = self.buffer[self.index];
+        const c = if (self.index == self.buffer.len) 0 else self.buffer[self.index];
         switch (state) {
             .start => switch (c) {
+                0 => {
+                    if (self.index != self.buffer.len) {
+                        token.tag = .invalid;
+                        token.loc.start = self.index;
+                        self.index += 1;
+                        return token;
+                    }
+                    break;
+                },
                 '\n' => {
                     token.loc.start = self.index + 1;
                     self.lineno += 1;
@@ -144,6 +158,10 @@ pub fn scanToken(self: *Self) Token {
                 },
                 ' ', '\t', '\r' => {
                     token.loc.start = self.index + 1;
+                },
+                '*' => {
+                    state = .star;
+                    token.tag = .star;
                 },
                 '!' => {
                     state = .bang;
@@ -191,11 +209,6 @@ pub fn scanToken(self: *Self) Token {
                 },
                 '-' => {
                     token.tag = .minus;
-                    self.index += 1;
-                    break;
-                },
-                '*' => {
-                    token.tag = .asterisk;
                     self.index += 1;
                     break;
                 },
@@ -251,6 +264,15 @@ pub fn scanToken(self: *Self) Token {
                     state = .start;
                 },
                 else => {},
+            },
+            .star => switch (c) {
+                '*' => {
+                    token.tag = .star_star;
+                    token.loc.end = self.index + 1;
+                    self.index += 1;
+                    break;
+                },
+                else => break,
             },
             .greater => switch (c) {
                 '=' => {
@@ -338,11 +360,13 @@ fn isAlphanumeric(self: *Self, c: u8) bool {
 
 fn getKeyword(self: *Self, start: usize, end: usize) ?Token.Tag {
     var string = self.buffer[start..end];
+    std.debug.print("looking for '{s}'\n", .{string});
     return KEYWORDS.get(string);
 }
 
 const State = enum {
     start,
+    star,
     string,
     number_int,
     number_dot,
@@ -357,7 +381,7 @@ const State = enum {
 
 test "Tokenizer" {
     const Tokenizer = @This();
-    var tokenizer = Tokenizer.init("\n(-1 + 1 - 2.01) / \"hello\";\n!= ! <= < >= > = ==// comment\nclass\n");
+    var tokenizer = Tokenizer.init("\n(-1 + 1 - 2.01) / \"hello\";\n!= ! <= < >= > = ==// comment\nclass\n ** *");
     var token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .l_paren);
     try std.testing.expectEqual(
@@ -497,11 +521,38 @@ test "Tokenizer" {
         token.loc,
         .{ .start = 58, .end = 63, .lineno = 4 },
     );
+    token = tokenizer.scanToken();
+    try std.testing.expectEqual(token.tag, .star_star);
+    try std.testing.expectEqual(
+        token.loc,
+        .{ .start = 65, .end = 67, .lineno = 5 },
+    );
+
+    token = tokenizer.scanToken();
+    try std.testing.expectEqual(token.tag, .star);
+    try std.testing.expectEqual(
+        token.loc,
+        .{ .start = 68, .end = 69, .lineno = 5 },
+    );
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .eof);
     try std.testing.expectEqual(
         token.loc,
-        .{ .start = 64, .end = 64, .lineno = 5 },
+        .{ .start = 69, .end = 69, .lineno = 5 },
     );
+}
+
+test "Tokenizer keywords" {
+    const Tokenizer = @This();
+    var tokenizer = Tokenizer.init("true != false null");
+    var token = tokenizer.scanToken();
+    try std.testing.expectEqual(token.tag, .kw_true);
+
+    token = tokenizer.scanToken();
+    token = tokenizer.scanToken();
+    try std.testing.expectEqual(token.tag, .kw_false);
+
+    token = tokenizer.scanToken();
+    try std.testing.expectEqual(token.tag, .kw_null);
 }

@@ -11,14 +11,13 @@ pub fn init(source: []const u8) Self {
     return .{ .tokenizer = tokenizer };
 }
 
-pub fn advance(self: *Self) Tokenizer.Token {
+pub fn advance(self: *Self) void {
     self.previous = self.current;
     while (true) {
         self.current = self.tokenizer.scanToken();
         if (self.current.tag != .invalid) break;
         self.errorAtCurrent("invalid token");
     }
-    return self.current;
 }
 
 pub fn errorAtCurrent(self: *Self, message: []const u8) void {
@@ -52,6 +51,6 @@ test "Parse" {
     const Parse = @This();
 
     var parse = Parse.init("1 + 1");
-    _ = parse.advance();
-    _ = parse.advance();
+    parse.advance();
+    parse.advance();
 }
