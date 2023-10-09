@@ -8,7 +8,6 @@ const Op = Chunk.Op;
 
 pub fn disassembleChunk(chunk: *Chunk, name: []const u8) !void {
     var offset: usize = 0;
-    print(".\n", .{});
     print("======== {s} ========\n", .{name});
     while (offset < chunk.code.items.len) {
         offset = try disassembleInstruction(chunk, offset);
@@ -27,22 +26,23 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
     }
 
     return switch (op) {
-        .ret => try simpleInstruction("OP_RETURN", offset),
+        .ret => try simpleInstruction("RETURN", offset),
         .constant => try constantInstruction(chunk, offset),
-        .negate => try simpleInstruction("OP_NEGATE", offset),
-        .add => try simpleInstruction("OP_ADD", offset),
-        .subtract => try simpleInstruction("OP_SUBTRACT", offset),
-        .multiply => try simpleInstruction("OP_MULTIPLY", offset),
-        .divide => try simpleInstruction("OP_DIVIDE", offset),
-        .not => try simpleInstruction("OP_NOT", offset),
-        .equals => try simpleInstruction("OP_EQUALS", offset),
-        .pow => try simpleInstruction("OP_POW", offset),
-        .null => try simpleInstruction("OP_NULL", offset),
-        .false => try simpleInstruction("OP_FALSE", offset),
-        .true => try simpleInstruction("OP_TRUE", offset),
-        .greater => try simpleInstruction("OP_GREATER", offset),
-        .less => try simpleInstruction("OP_LESS", offset),
-        .print => try simpleInstruction("OP_PRINT", offset),
+        .negate => try simpleInstruction("NEGATE", offset),
+        .add => try simpleInstruction("ADD", offset),
+        .subtract => try simpleInstruction("SUBTRACT", offset),
+        .multiply => try simpleInstruction("MULTIPLY", offset),
+        .divide => try simpleInstruction("DIVIDE", offset),
+        .not => try simpleInstruction("NOT", offset),
+        .equals => try simpleInstruction("EQUALS", offset),
+        .pow => try simpleInstruction("POW", offset),
+        .null => try simpleInstruction("NULL", offset),
+        .false => try simpleInstruction("FALSE", offset),
+        .true => try simpleInstruction("TRUE", offset),
+        .greater => try simpleInstruction("GREATER", offset),
+        .less => try simpleInstruction("LESS", offset),
+        .print => try simpleInstruction("PRINT", offset),
+        .pop => try simpleInstruction("POP", offset),
     };
 }
 
@@ -54,7 +54,7 @@ pub fn simpleInstruction(name: []const u8, offset: usize) !usize {
 pub fn constantInstruction(chunk: *Chunk, offset: usize) !usize {
     const idx = chunk.readByte(offset + 1);
     const value = chunk.getConstant(idx);
-    print("{s:<16}{any}\n", .{ "OP_CONSTANT", value });
+    print("{s:<16}{any}\n", .{ "CONSTANT", value });
     return offset + 2;
 }
 

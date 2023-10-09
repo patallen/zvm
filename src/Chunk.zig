@@ -15,6 +15,7 @@ pub const Op = enum(u8) {
     true,
     null,
     print,
+    pop,
 };
 
 pub const Byte = u8;

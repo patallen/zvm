@@ -8,6 +8,8 @@ const Compiler = @import("./Compiler.zig");
 const Obj = @import("./object.zig").Obj;
 const copyString = @import("./object.zig").copyString;
 
+const debuginstructions: bool = true;
+
 ip: usize = 0,
 allocator: std.mem.Allocator,
 chunk: Chunk = undefined,
@@ -45,6 +47,9 @@ fn compileToChunk(self: *Self, source: []const u8) !void {
     var hadError = try compiler.compile();
     _ = hadError;
     self.chunk = compiler.chunk;
+    if (debuginstructions) {
+        try debug.disassembleChunk(&self.chunk, "chunk");
+    }
 }
 
 pub fn resetChunk(self: *Self, chunk: *Chunk) void {
@@ -166,9 +171,11 @@ pub fn run(self: *Self) !InterpretResult {
             .not => {
                 self.push(Value.boolean(!valIsTruthy(self.pop())));
             },
+            .pop => {
+                _ = self.pop();
+            },
         }
     }
-    // self.dumpStack();
     return .ok;
 }
 

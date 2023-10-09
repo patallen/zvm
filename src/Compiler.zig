@@ -182,8 +182,14 @@ fn statement(self: *Self) !void {
     if (self.match(.kw_print)) {
         try self.printStatement();
     } else {
-        try self.computeExpression(0);
+        try self.expressionStatement();
     }
+}
+
+fn expressionStatement(self: *Self) !void {
+    try self.computeExpression(0);
+    self.consume(.semicolon, "Expect ';' following statement.");
+    try self.emitOp(.pop);
 }
 
 fn printStatement(self: *Self) !void {
