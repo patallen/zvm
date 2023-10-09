@@ -34,8 +34,6 @@ allocator: Allocator,
 source: []const u8,
 chunk: Chunk,
 p: Parse,
-hadError: bool = false,
-panicMode: bool = false,
 
 const Self = @This();
 
@@ -57,7 +55,7 @@ pub fn compile(self: *Self) !bool {
     while (!self.match(.eof)) {
         try self.declaration();
     }
-    return !self.hadError;
+    return !self.p.hadError;
 }
 
 fn consume(self: *Self, expected_tag: Tokenizer.Token.Tag, message: []const u8) void {
@@ -150,6 +148,25 @@ fn computeOp(self: *Self, token: Tokenizer.Token) !void {
     }
 }
 
+fn synchronize(self: *Self) void {
+    self.p.panicMode = false;
+    while (self.p.current.tag != .eof) {
+        if (self.p.previous.tag == .semicolon) return;
+        switch (self.p.current.tag) {
+            .kw_print,
+            .kw_class,
+            .kw_fn,
+            .kw_return,
+            .kw_if,
+            .kw_var,
+            .kw_while,
+            => break,
+            else => {},
+        }
+        self.p.advance();
+    }
+}
+
 fn computeUnaryExpression(self: *Self, op: Chunk.Op) !void {
     self.p.advance();
     try self.computeExpression(UNARY_PRECEDENCE);
@@ -158,6 +175,7 @@ fn computeUnaryExpression(self: *Self, op: Chunk.Op) !void {
 
 fn declaration(self: *Self) !void {
     try self.statement();
+    if (self.p.panicMode) self.synchronize();
 }
 
 fn statement(self: *Self) !void {
@@ -170,6 +188,7 @@ fn statement(self: *Self) !void {
 
 fn printStatement(self: *Self) !void {
     try self.computeExpression(0);
+    self.consume(.semicolon, "Expect ';' following statement.");
     try self.emitOp(.print);
 }
 

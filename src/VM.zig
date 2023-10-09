@@ -58,7 +58,6 @@ pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
     self.compileToChunk(source) catch {
         return .err;
     };
-    debug.disassembleChunk(&self.chunk, "chunk") catch {};
     return try self.run();
 }
 
@@ -77,12 +76,7 @@ pub fn run(self: *Self) !InterpretResult {
     while (self.ip < self.chunk.code.items.len) {
         var instruction = self.readOp();
         switch (instruction) {
-            .print => {
-                std.debug.print("{any}\n", .{self.pop()});
-            },
-            .ret => {
-                std.debug.print("{any}\n", .{self.pop()});
-            },
+            .print, .ret => std.debug.print("{any}\n", .{self.pop()}),
             .constant => {
                 var constant = self.chunk.getConstant(self.readByte());
                 self.push(constant);
