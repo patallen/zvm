@@ -11,6 +11,7 @@ pub const Obj = struct {
     pub const String = struct {
         obj: Obj,
         bytes: []const u8,
+        hash: u64,
 
         pub fn fromObj(obj: *Obj) *String {
             return @fieldParentPtr(String, "obj", obj);
@@ -27,6 +28,10 @@ pub fn copyString(allocator: std.mem.Allocator, bytes: []const u8) !*Obj.String 
     var strmem = try allocator.alloc(u8, bytes.len);
     @memcpy(strmem, bytes);
     var string_obj = try allocator.create(Obj.String);
-    string_obj.* = .{ .obj = .{ .ty = .string }, .bytes = strmem };
+    string_obj.* = .{
+        .obj = .{ .ty = .string },
+        .bytes = strmem,
+        .hash = std.hash_map.hashString(strmem),
+    };
     return string_obj;
 }
