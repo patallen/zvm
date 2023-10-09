@@ -322,7 +322,7 @@ pub fn scanToken(self: *Self) Token {
                 else => break,
             },
             .string => switch (c) {
-                '0'...'9', 'a'...'z', 'A'...'Z', '\'', '.', '?', ',', '-', '+' => {},
+                ' '...'!', '#'...'~' => {},
                 '"' => {
                     self.index += 1;
                     break;
@@ -554,4 +554,13 @@ test "Tokenizer keywords" {
 
     token = tokenizer.scanToken();
     try std.testing.expectEqual(token.tag, .kw_null);
+}
+
+test "Tokenizer strings" {
+    const Tokenizer = @This();
+
+    var tokenizer = Tokenizer.init("\"hello\"");
+    var token = tokenizer.scanToken();
+    try std.testing.expectEqual(token.tag, .string_literal);
+    try std.testing.expectEqual(token.loc.lineno, 1);
 }

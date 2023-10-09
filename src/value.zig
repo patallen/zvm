@@ -1,29 +1,41 @@
 const std = @import("std");
+const Obj = @import("./object.zig").Obj;
 
-pub const ValueTag = enum { bool, number, null };
 pub const Value = struct {
-    type: ValueTag,
-    as: union {
-        number: f64,
-        bool: bool,
-    },
+    ty: Type,
+    as: RawValue,
+
+    pub const Type = enum { bool, number, null, obj };
+    const RawValue = union { number: f64, bool: bool, obj: *Obj };
 
     pub fn boolean(value: bool) Value {
-        return .{ .type = .bool, .as = .{ .bool = value } };
+        return .{ .ty = .bool, .as = .{ .bool = value } };
     }
 
     pub fn number(value: f64) Value {
-        return .{ .type = .number, .as = .{ .number = value } };
+        return .{ .ty = .number, .as = .{ .number = value } };
     }
 
     pub fn @"null"() Value {
-        return .{ .type = .null, .as = undefined };
+        return .{ .ty = .null, .as = undefined };
+    }
+
+    pub fn obj(ptr: *Obj) Value {
+        return .{ .ty = .obj, .as = .{ .obj = ptr } };
+    }
+
+    pub fn isType(self: *Value, ty: Value.Type) bool {
+        return self.ty == ty;
+    }
+
+    pub fn isObjType(self: *Value, ty: Value.Type, ot: Obj.Type) bool {
+        return self.isType(ty) and self.as.obj.ty == ot;
     }
 
     pub fn format(self: Value, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = options;
         _ = fmt;
-        return switch (self.type) {
+        return switch (self.ty) {
             .bool => {
                 try writer.print("{}", .{self.as.bool});
             },
@@ -32,6 +44,9 @@ pub const Value = struct {
             },
             .number => {
                 try writer.print("{d}", .{self.as.number});
+            },
+            .obj => switch (self.as.obj.ty) {
+                .string => try writer.print("\"{s}\"", .{Obj.String.fromObj(self.as.obj).bytes}),
             },
         };
     }

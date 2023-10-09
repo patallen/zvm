@@ -5,6 +5,7 @@ const Chunk = @import("./Chunk.zig");
 const Parse = @import("./Parse.zig");
 const Allocator = std.mem.Allocator;
 const Value = @import("./value.zig").Value;
+const Obj = @import("./object.zig").Obj;
 
 const UNARY_PRECEDENCE = 5;
 
@@ -142,7 +143,7 @@ fn computeUnaryExpression(self: *Self, op: Chunk.Op) !void {
     try self.emitOp(op);
 }
 
-fn computeAtom(self: *Self) error{ ChunkWriteError, InvalidCharacter }!void {
+fn computeAtom(self: *Self) error{ ChunkWriteError, OutOfMemory, InvalidCharacter }!void {
     var current = self.p.current;
     if (getOpInfo(current) != null) {
         self.p.errorAtCurrent("Expected an atom");
@@ -173,6 +174,14 @@ fn computeAtom(self: *Self) error{ ChunkWriteError, InvalidCharacter }!void {
             var str = self.source[current.loc.start..current.loc.end];
             const value = try std.fmt.parseFloat(f64, str);
             try self.emitConstant(Value.number(value));
+        },
+        .string_literal => {
+            self.p.advance();
+            var strmem = try self.allocator.alloc(u8, current.loc.end - current.loc.start - 2);
+            @memcpy(strmem, self.source[current.loc.start + 1 .. current.loc.end - 1]);
+            var str_obj = try Obj.String.create(self.allocator, strmem);
+            var value = Value.obj(&str_obj.obj);
+            try self.emitConstant(value);
         },
         else => {
             std.debug.print("reached 'unreachable' atom token:{any}: '{s}'\n", .{

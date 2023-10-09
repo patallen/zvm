@@ -5,11 +5,14 @@ const Op = @import("./Chunk.zig").Op;
 const Value = @import("./value.zig").Value;
 const Tokenizer = @import("./Tokenizer.zig");
 const Compiler = @import("./Compiler.zig");
+const Obj = @import("./object.zig").Obj;
 
 ip: usize = 0,
+allocator: std.mem.Allocator,
 chunk: Chunk = undefined,
 stack: [256]Value,
 sp: u8,
+arena: std.heap.ArenaAllocator,
 
 pub const InterpretResult = enum {
     ok,
@@ -18,19 +21,25 @@ pub const InterpretResult = enum {
 
 const Self = @This();
 
-pub fn init() Self {
+pub fn init(allocator: std.mem.Allocator) Self {
     var stack = [_]Value{Value.number(0)} ** 256;
     return .{
         .ip = 0,
         .chunk = undefined,
         .stack = stack,
         .sp = 0,
+        .allocator = allocator,
+        .arena = std.heap.ArenaAllocator.init(allocator),
     };
+}
+
+pub fn deinit(self: *Self) void {
+    self.arena.deinit();
 }
 
 fn compileToChunk(self: *Self, source: []const u8) !void {
     // TODO: This is not being deinitialized... lifetimes are weird. Fix it.
-    var compiler = Compiler.init(std.heap.page_allocator, source);
+    var compiler = Compiler.init(self.arena.allocator(), source);
 
     var hadError = try compiler.compile();
     _ = hadError;
@@ -44,12 +53,12 @@ pub fn resetChunk(self: *Self, chunk: *Chunk) void {
     self.sp = 0;
 }
 
-pub fn interpret(self: *Self, source: []const u8) InterpretResult {
+pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
     self.compileToChunk(source) catch {
         return .err;
     };
     debug.disassembleChunk(&self.chunk, "chunk") catch {};
-    return self.run();
+    return try self.run();
 }
 
 fn dumpStack(self: *Self) void {
@@ -63,7 +72,7 @@ fn dumpStack(self: *Self) void {
     std.debug.print("]\n", .{});
 }
 
-pub fn run(self: *Self) InterpretResult {
+pub fn run(self: *Self) !InterpretResult {
     while (self.ip < self.chunk.code.items.len) {
         var instruction = self.readOp();
         switch (instruction) {
@@ -78,8 +87,24 @@ pub fn run(self: *Self) InterpretResult {
                 self.push(Value.number(-self.pop().as.number));
             },
             .add => {
-                const operand = self.pop().as.number;
-                self.push(Value.number(self.pop().as.number + operand));
+                var b = self.pop();
+                var a = self.pop();
+                if (a.ty != b.ty) {
+                    std.debug.print("Can only add elements of the same type.\n", .{});
+                }
+                switch (a.ty) {
+                    .number => self.push(Value.number(a.as.number + b.as.number)),
+                    .null => {
+                        std.debug.print("can't add nulls together.\n", .{});
+                    },
+                    .obj => switch (a.as.obj.ty) {
+                        .string => {
+                            var value = try concat(self.arena.allocator(), a, b);
+                            self.push(value);
+                        },
+                    },
+                    .bool => std.debug.print("can't add two bools together.\n", .{}),
+                }
             },
             .subtract => {
                 const operand = self.pop().as.number;
@@ -102,20 +127,21 @@ pub fn run(self: *Self) InterpretResult {
                 // TODO: We need Value unions
                 var b = self.pop();
                 var a = self.pop();
-                if (a.type != b.type) {
+                if (a.ty != b.ty) {
                     std.debug.print("CANNOT COMPARE VALUES OF DIFFERENT TYPE\n", .{});
                 } else {
-                    self.push(switch (a.type) {
+                    self.push(switch (a.ty) {
                         .bool => Value.boolean(a.as.bool == b.as.bool),
                         .number => Value.boolean(a.as.number == b.as.number),
                         .null => Value.boolean(true),
+                        .obj => Value.boolean(true), // TODO: FIX THIS
                     });
                 }
             },
             .greater => {
                 var b = self.pop();
                 var a = self.pop();
-                if (a.type != .number or b.type != .number) {
+                if (a.ty != .number or b.ty != .number) {
                     std.debug.print("Can only test '>' on two numbers.\n", .{});
                 } else {
                     self.push(Value.boolean(a.as.number > b.as.number));
@@ -124,7 +150,7 @@ pub fn run(self: *Self) InterpretResult {
             .less => {
                 var b = self.pop();
                 var a = self.pop();
-                if (a.type != .number or b.type != .number) {
+                if (a.ty != .number or b.ty != .number) {
                     std.debug.print("Can only test '<' on two numbers.", .{});
                 } else {
                     self.push(Value.boolean(a.as.number < b.as.number));
@@ -149,10 +175,11 @@ pub fn run(self: *Self) InterpretResult {
 }
 
 fn valIsTruthy(val: Value) bool {
-    return switch (val.type) {
+    return switch (val.ty) {
         .null => false,
         .bool => val.as.bool,
         .number => val.as.number > 0,
+        .obj => true,
     };
 }
 
@@ -179,7 +206,16 @@ fn pop(self: *Self) Value {
 
 test "vm" {
     const VM = @This();
-    var vm = VM.init();
-    var res = vm.interpret("!(5 - 4 > 3 * 2 == !null)");
+    var vm = VM.init(std.testing.allocator);
+    defer vm.deinit();
+    var res = try vm.interpret("\"hi\"");
     _ = res;
+}
+
+fn concat(allocator: std.mem.Allocator, a: Value, b: Value) !Value {
+    var res = std.ArrayList(u8).init(allocator);
+    _ = try res.writer().write(Obj.String.fromObj(a.as.obj).bytes);
+    _ = try res.writer().write(Obj.String.fromObj(b.as.obj).bytes);
+    var string_obj = try Obj.String.create(allocator, res.items);
+    return Value.obj(&string_obj.obj);
 }
