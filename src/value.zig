@@ -1,5 +1,6 @@
 const std = @import("std");
 const Obj = @import("./object.zig").Obj;
+const assert = std.debug.assert;
 
 pub const Value = struct {
     ty: Type,
@@ -24,12 +25,26 @@ pub const Value = struct {
         return .{ .ty = .obj, .as = .{ .obj = ptr } };
     }
 
-    pub fn isType(self: *Value, ty: Value.Type) bool {
+    pub fn isType(self: *const Value, ty: Value.Type) bool {
         return self.ty == ty;
     }
 
-    pub fn isObjType(self: *Value, ty: Value.Type, ot: Obj.Type) bool {
+    pub fn isObjType(self: *const Value, ty: Value.Type, ot: Obj.Type) bool {
         return self.isType(ty) and self.as.obj.ty == ot;
+    }
+
+    pub fn asObj(self: *const Value) *Obj {
+        assert(self.isType(.obj));
+        return self.as.obj;
+    }
+
+    pub fn asStringObj(self: *const Value) *Obj.String {
+        assert(self.isObjType(.obj, .string));
+        return @fieldParentPtr(Obj.String, "obj", self.asObj());
+    }
+
+    pub fn asRawString(self: *const Value) []const u8 {
+        return self.asStringObj().bytes;
     }
 
     pub fn format(self: Value, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {

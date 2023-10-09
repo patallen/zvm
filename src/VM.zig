@@ -6,6 +6,7 @@ const Value = @import("./value.zig").Value;
 const Tokenizer = @import("./Tokenizer.zig");
 const Compiler = @import("./Compiler.zig");
 const Obj = @import("./object.zig").Obj;
+const copyString = @import("./object.zig").copyString;
 
 ip: usize = 0,
 allocator: std.mem.Allocator,
@@ -213,9 +214,28 @@ test "vm" {
 }
 
 fn concat(allocator: std.mem.Allocator, a: Value, b: Value) !Value {
+    // TODO: I think we're doing an extra allocation here. Maybe optimize later
     var res = std.ArrayList(u8).init(allocator);
-    _ = try res.writer().write(Obj.String.fromObj(a.as.obj).bytes);
-    _ = try res.writer().write(Obj.String.fromObj(b.as.obj).bytes);
-    var string_obj = try Obj.String.create(allocator, res.items);
+    defer res.deinit();
+    _ = try res.writer().write(a.asRawString());
+    _ = try res.writer().write(b.asRawString());
+    var string_obj = try copyString(allocator, res.items);
     return Value.obj(&string_obj.obj);
+}
+
+test "concat" {
+    var allocator = std.testing.allocator;
+    var bytes = "Hello";
+    _ = bytes;
+
+    var a = try copyString(allocator, "Hello,");
+    var b = try copyString(allocator, " World!");
+
+    var result = try concat(allocator, Value.obj(&a.obj), Value.obj(&b.obj));
+    var string = result.asStringObj();
+    defer a.deinit(allocator);
+    defer b.deinit(allocator);
+    defer string.deinit(allocator);
+
+    try std.testing.expectEqualSlices(u8, "Hello, World!", result.asRawString());
 }

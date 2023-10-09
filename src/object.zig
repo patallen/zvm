@@ -16,23 +16,17 @@ pub const Obj = struct {
             return @fieldParentPtr(String, "obj", obj);
         }
 
-        pub fn create(allocator: std.mem.Allocator, bytes: []const u8) !*String {
-            var string = try allocator.create(String);
-            var obj = .{ .ty = .string };
-            string.* = .{ .obj = obj, .bytes = bytes };
-            return string;
+        pub fn deinit(self: *String, allocator: std.mem.Allocator) void {
+            allocator.free(self.bytes);
+            allocator.destroy(self);
         }
     };
 };
 
-test "tunning" {
-    var allocator = std.heap.page_allocator;
-
-    var string = try Obj.String.create(allocator, "hello");
-    defer allocator.destroy(string);
-
-    var value = Value.obj(&string.obj);
-    std.debug.print("=============\n", .{});
-    std.debug.print("{any}\n", .{value.as.obj});
-    std.debug.print("{s}\n", .{string.bytes});
+pub fn copyString(allocator: std.mem.Allocator, bytes: []const u8) !*Obj.String {
+    var strmem = try allocator.alloc(u8, bytes.len);
+    @memcpy(strmem, bytes);
+    var string_obj = try allocator.create(Obj.String);
+    string_obj.* = .{ .obj = .{ .ty = .string }, .bytes = strmem };
+    return string_obj;
 }

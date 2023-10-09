@@ -2,7 +2,7 @@ const std = @import("std");
 const VM = @import("./VM.zig");
 const Chunk = @import("./Chunk.zig");
 
-fn repl(allocator: std.mem.Allocator, stdin: std.io.Reader, stdout: std.io.Writer) !void {
+fn repl(allocator: std.mem.Allocator, stdin: anytype, stdout: anytype) !void {
     while (true) {
         try stdout.print("zvm > ", .{});
         var vm = VM.init(allocator);
