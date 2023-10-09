@@ -42,6 +42,7 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
         .true => try simpleInstruction("OP_TRUE", offset),
         .greater => try simpleInstruction("OP_GREATER", offset),
         .less => try simpleInstruction("OP_LESS", offset),
+        .print => try simpleInstruction("OP_PRINT", offset),
     };
 }
 

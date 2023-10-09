@@ -53,16 +53,27 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn compile(self: *Self) !bool {
-    try self.computeExpression(0);
+    self.p.advance();
+    while (!self.match(.eof)) {
+        try self.declaration();
+    }
     return !self.hadError;
 }
 
-pub fn consume(self: *Self, expected_tag: Tokenizer.Token.Tag, message: []const u8) void {
+fn consume(self: *Self, expected_tag: Tokenizer.Token.Tag, message: []const u8) void {
     if (self.p.current.tag == expected_tag) {
         self.p.advance();
     } else {
         self.p.errorAtCurrent(message);
     }
+}
+
+fn match(self: *Self, expected_tag: Tokenizer.Token.Tag) bool {
+    if (self.p.current.tag == expected_tag) {
+        self.p.advance();
+        return true;
+    }
+    return false;
 }
 
 fn currentChunk(self: *Self) *Chunk {
@@ -89,12 +100,11 @@ fn emitConstant(self: *Self, value: Value) !void {
 fn number(self: *Self) !void {
     var loc = self.p.previous.loc;
     var strval = self.source[loc.start..loc.end];
-    var fvalue = try std.fmt.parseFloat(Chunk.Value, strval);
-    try self.emitConstant(fvalue);
+    var fvalue = try std.fmt.parseFloat(f64, strval);
+    try self.emitConstant(Value.number(fvalue));
 }
 
 fn computeExpression(self: *Self, min_prec: usize) !void {
-    self.p.advance();
     if (self.p.current.tag == .eof) return;
     if (self.p.current.tag == .invalid) {
         self.p.errorAtCurrent("Invalid token");
@@ -110,6 +120,7 @@ fn computeExpression(self: *Self, min_prec: usize) !void {
                 break;
             }
             var next_min_prec = if (op_info.assoc == .left) op_info.prec + 1 else op_info.prec;
+            self.p.advance();
             try self.computeExpression(next_min_prec);
             try self.computeOp(current);
         } else {
@@ -140,8 +151,26 @@ fn computeOp(self: *Self, token: Tokenizer.Token) !void {
 }
 
 fn computeUnaryExpression(self: *Self, op: Chunk.Op) !void {
+    self.p.advance();
     try self.computeExpression(UNARY_PRECEDENCE);
     try self.emitOp(op);
+}
+
+fn declaration(self: *Self) !void {
+    try self.statement();
+}
+
+fn statement(self: *Self) !void {
+    if (self.match(.kw_print)) {
+        try self.printStatement();
+    } else {
+        try self.computeExpression(0);
+    }
+}
+
+fn printStatement(self: *Self) !void {
+    try self.computeExpression(0);
+    try self.emitOp(.print);
 }
 
 fn computeAtom(self: *Self) error{ ChunkWriteError, OutOfMemory, InvalidCharacter }!void {
@@ -153,6 +182,7 @@ fn computeAtom(self: *Self) error{ ChunkWriteError, OutOfMemory, InvalidCharacte
         .minus => try self.computeUnaryExpression(.negate),
         .bang => try self.computeUnaryExpression(.not),
         .l_paren => {
+            self.p.advance();
             try self.computeExpression(0);
             self.consume(.r_paren, "Expected closing paren");
         },
@@ -172,9 +202,7 @@ fn computeAtom(self: *Self) error{ ChunkWriteError, OutOfMemory, InvalidCharacte
         },
         .number_literal => {
             self.p.advance();
-            var str = self.source[current.loc.start..current.loc.end];
-            const value = try std.fmt.parseFloat(f64, str);
-            try self.emitConstant(Value.number(value));
+            try self.number();
         },
         .string_literal => {
             self.p.advance();

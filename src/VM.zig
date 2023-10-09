@@ -77,6 +77,9 @@ pub fn run(self: *Self) !InterpretResult {
     while (self.ip < self.chunk.code.items.len) {
         var instruction = self.readOp();
         switch (instruction) {
+            .print => {
+                std.debug.print("{any}\n", .{self.pop()});
+            },
             .ret => {
                 std.debug.print("{any}\n", .{self.pop()});
             },
