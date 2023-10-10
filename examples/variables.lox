@@ -1,0 +1,7 @@
+var mom_name = "Sandy Butts";
+var dad_name = "Seymore Butts";
+print "Your father is " + dad_name + ". Your mother is " + mom_name + ".";
+print "JK your dad is " + dad_name;
+var x = 10.9 * 2.14 / 100 ** 2.18;
+var y = 10.2 * 2.99 / 4 ** 1.18;
+print x * y;

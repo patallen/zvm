@@ -219,7 +219,6 @@ fn defineVariable(self: *Self, index: u8) !void {
 }
 
 fn expressionStatement(self: *Self) !void {
-    std.debug.print("Entering expression statement", .{});
     try self.computeExpression(0);
     self.consume(.semicolon, "Expected ';' following statement.");
     try self.emitOp(.pop);

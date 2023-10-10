@@ -9,7 +9,7 @@ const Obj = @import("./object.zig").Obj;
 const copyString = @import("./object.zig").copyString;
 const ObjStringHashMap = @import("./hashmap.zig").ObjStringHashMap;
 
-const debuginstructions: bool = true;
+const debuginstructions: bool = false;
 
 ip: usize = 0,
 allocator: std.mem.Allocator,
@@ -202,7 +202,6 @@ pub fn run(self: *Self) !InterpretResult {
                 var name_string = Obj.String.fromObj(name_value.as.obj);
                 if (self.globals.contains(name_string)) {
                     try self.globals.put(name_string, self.peek(0));
-                    std.debug.print("Re-assigned variable {s}={any}'\n", .{ name_string.bytes, self.peek(0) });
                 } else {
                     // runtime error
                     std.debug.print("Cannot assign to undefined name: '{s}'\n", .{name_string.bytes});

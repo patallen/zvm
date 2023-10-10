@@ -20,5 +20,16 @@ pub fn main() !void {
     var stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
 
-    try repl(allocator, stdin, stdout);
+    var args = std.process.args();
+    _ = args.next();
+    if (args.next()) |arg| {
+        var file = try std.fs.cwd().openFile(arg, .{});
+        std.debug.print("Attempting to open file: '{s}\n", .{arg});
+        var source = try file.readToEndAlloc(allocator, 100000);
+        var vm = VM.init(allocator);
+        var res = try vm.interpret(source);
+        _ = res;
+    } else {
+        try repl(allocator, stdin, stdout);
+    }
 }
