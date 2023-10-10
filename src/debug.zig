@@ -27,7 +27,7 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
 
     return switch (op) {
         .ret => try simpleInstruction("RETURN", offset),
-        .constant => try constantInstruction(chunk, offset),
+        .constant => try constantInstruction("CONSTANT", chunk, offset),
         .negate => try simpleInstruction("NEGATE", offset),
         .add => try simpleInstruction("ADD", offset),
         .subtract => try simpleInstruction("SUBTRACT", offset),
@@ -43,6 +43,9 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
         .less => try simpleInstruction("LESS", offset),
         .print => try simpleInstruction("PRINT", offset),
         .pop => try simpleInstruction("POP", offset),
+        .define_global => try constantInstruction("DEF_GLOBAL", chunk, offset),
+        .load_global => try constantInstruction("LOAD_GLOBAL", chunk, offset),
+        .set_global => try constantInstruction("SET_GLOBAL", chunk, offset),
     };
 }
 
@@ -51,10 +54,10 @@ pub fn simpleInstruction(name: []const u8, offset: usize) !usize {
     return offset + 1;
 }
 
-pub fn constantInstruction(chunk: *Chunk, offset: usize) !usize {
+pub fn constantInstruction(name: []const u8, chunk: *Chunk, offset: usize) !usize {
     const idx = chunk.readByte(offset + 1);
     const value = chunk.getConstant(idx);
-    print("{s:<16}{any}\n", .{ "CONSTANT", value });
+    print("{s:<16}{any}\n", .{ name, value });
     return offset + 2;
 }
 

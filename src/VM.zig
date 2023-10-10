@@ -7,11 +7,13 @@ const Tokenizer = @import("./Tokenizer.zig");
 const Compiler = @import("./Compiler.zig");
 const Obj = @import("./object.zig").Obj;
 const copyString = @import("./object.zig").copyString;
+const ObjStringHashMap = @import("./hashmap.zig").ObjStringHashMap;
 
 const debuginstructions: bool = true;
 
 ip: usize = 0,
 allocator: std.mem.Allocator,
+globals: ObjStringHashMap(Value),
 chunk: Chunk = undefined,
 stack: [256]Value,
 sp: u8,
@@ -32,12 +34,14 @@ pub fn init(allocator: std.mem.Allocator) Self {
         .stack = stack,
         .sp = 0,
         .allocator = allocator,
+        .globals = ObjStringHashMap(Value).init(allocator),
         .arena = std.heap.ArenaAllocator.init(allocator),
     };
 }
 
 pub fn deinit(self: *Self) void {
     self.arena.deinit();
+    self.globals.deinit();
 }
 
 fn compileToChunk(self: *Self, source: []const u8) !void {
@@ -64,6 +68,10 @@ pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
         return .err;
     };
     return try self.run();
+}
+
+fn peek(self: *Self, distance: u8) Value {
+    return self.stack[self.sp - distance - 1];
 }
 
 fn dumpStack(self: *Self) void {
@@ -173,6 +181,32 @@ pub fn run(self: *Self) !InterpretResult {
             },
             .pop => {
                 _ = self.pop();
+            },
+            .define_global => {
+                var global_name = self.chunk.getConstant(self.readByte());
+                var value = self.pop();
+                try self.globals.put(Obj.String.fromObj(global_name.as.obj), value);
+            },
+            .load_global => {
+                var name_value = self.chunk.getConstant(self.readByte());
+                var name_string = Obj.String.fromObj(name_value.as.obj);
+                if (self.globals.get(name_string)) |value| {
+                    self.push(value);
+                } else {
+                    // runtime error
+                    std.debug.print("Undefined variable: '{s}'\n", .{name_string.bytes});
+                }
+            },
+            .set_global => {
+                var name_value = self.chunk.getConstant(self.readByte());
+                var name_string = Obj.String.fromObj(name_value.as.obj);
+                if (self.globals.contains(name_string)) {
+                    try self.globals.put(name_string, self.peek(0));
+                    std.debug.print("Re-assigned variable {s}={any}'\n", .{ name_string.bytes, self.peek(0) });
+                } else {
+                    // runtime error
+                    std.debug.print("Cannot assign to undefined name: '{s}'\n", .{name_string.bytes});
+                }
             },
         }
     }

@@ -95,6 +95,11 @@ fn emitConstant(self: *Self, value: Value) !void {
     try self.emitByte(try self.chunk.addConstant(value));
 }
 
+fn emitGlobal(self: *Self, value: Value) !void {
+    _ = value;
+    _ = self;
+}
+
 fn number(self: *Self) !void {
     var loc = self.p.previous.loc;
     var strval = self.source[loc.start..loc.end];
@@ -174,7 +179,11 @@ fn computeUnaryExpression(self: *Self, op: Chunk.Op) !void {
 }
 
 fn declaration(self: *Self) !void {
-    try self.statement();
+    if (self.match(.kw_var)) {
+        try self.variableDeclaration();
+    } else {
+        try self.statement();
+    }
     if (self.p.panicMode) self.synchronize();
 }
 
@@ -186,9 +195,33 @@ fn statement(self: *Self) !void {
     }
 }
 
-fn expressionStatement(self: *Self) !void {
+fn parseVariable(self: *Self, message: []const u8) !u8 {
+    self.consume(.ident, message);
+    return try self.identifierConstant(&self.p.previous);
+}
+
+fn identifierConstant(self: *Self, tok: *Tokenizer.Token) !u8 {
+    var string_obj = try copyString(self.allocator, self.source[tok.loc.start..tok.loc.end]);
+    return self.chunk.addConstant(Value.obj(&string_obj.obj));
+}
+
+fn variableDeclaration(self: *Self) !void {
+    var global = try self.parseVariable("Expected variable name.");
+    self.consume(.eq, "Expected '=' for variable assignment.");
     try self.computeExpression(0);
-    self.consume(.semicolon, "Expect ';' following statement.");
+    self.consume(.semicolon, "Expected ';' following variable declaration.");
+    try self.defineVariable(global);
+}
+
+fn defineVariable(self: *Self, index: u8) !void {
+    try self.emitOp(.define_global);
+    try self.emitByte(index);
+}
+
+fn expressionStatement(self: *Self) !void {
+    std.debug.print("Entering expression statement", .{});
+    try self.computeExpression(0);
+    self.consume(.semicolon, "Expected ';' following statement.");
     try self.emitOp(.pop);
 }
 
@@ -234,6 +267,17 @@ fn computeAtom(self: *Self) error{ ChunkWriteError, OutOfMemory, InvalidCharacte
             const bytes = self.source[current.loc.start + 1 .. current.loc.end - 1];
             var string_obj = try copyString(self.allocator, bytes);
             try self.emitConstant(Value.obj(&string_obj.obj));
+        },
+        .ident => {
+            self.p.advance();
+            var arg = try self.identifierConstant(&current);
+            if (self.match(.eq)) {
+                try self.computeExpression(0);
+                try self.emitOp(.set_global);
+            } else {
+                try self.emitOp(.load_global);
+            }
+            try self.emitByte(arg);
         },
         else => {
             std.debug.print("reached 'unreachable' atom token:{any}: '{s}'\n", .{
