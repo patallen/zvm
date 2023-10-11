@@ -46,7 +46,14 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
         .define_global => try constantInstruction("DEF_GLOBAL", chunk, offset),
         .load_global => try constantInstruction("LOAD_GLOBAL", chunk, offset),
         .set_global => try constantInstruction("SET_GLOBAL", chunk, offset),
+        .load_local => try byteInstruction("LOAD_LOCAL", chunk, offset),
+        .set_local => try byteInstruction("SET_LOCAL", chunk, offset),
     };
+}
+fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) !usize {
+    var slot = chunk.code.items[offset + 1];
+    print("{s:<16}{any}\n", .{ name, slot });
+    return offset + 2;
 }
 
 pub fn simpleInstruction(name: []const u8, offset: usize) !usize {

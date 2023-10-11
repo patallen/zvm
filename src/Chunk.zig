@@ -19,6 +19,8 @@ pub const Op = enum(u8) {
     define_global,
     load_global,
     set_global,
+    load_local,
+    set_local,
 };
 
 pub const Byte = u8;
@@ -47,19 +49,13 @@ pub fn deinit(self: *Self) void {
     self.lines.deinit();
 }
 
-pub fn writeByte(self: *Self, byte: Byte, line: usize) error{ChunkWriteError}!void {
-    self.code.append(byte) catch {
-        return error.ChunkWriteError;
-    };
-    self.lines.append(line) catch {
-        return error.ChunkWriteError;
-    };
+pub fn writeByte(self: *Self, byte: Byte, line: usize) !void {
+    try self.code.append(byte);
+    try self.lines.append(line);
 }
 
-pub fn writeOp(self: *Self, op: Op, line: usize) error{ChunkWriteError}!void {
-    self.writeByte(@intFromEnum(op), line) catch {
-        return error.ChunkWriteError;
-    };
+pub fn writeOp(self: *Self, op: Op, line: usize) !void {
+    try self.writeByte(@intFromEnum(op), line);
 }
 
 pub fn readByte(self: *Self, offset: usize) Byte {
@@ -70,10 +66,8 @@ pub fn readOp(self: *Self, offset: usize) Op {
     return @enumFromInt(self.readByte(offset));
 }
 
-pub fn addConstant(self: *Self, value: Value) error{ChunkWriteError}!Byte {
-    self.constants.append(value) catch {
-        return error.ChunkWriteError;
-    };
+pub fn addConstant(self: *Self, value: Value) !Byte {
+    try self.constants.append(value);
     return @as(u8, @intCast(self.constants.items.len - 1));
 }
 

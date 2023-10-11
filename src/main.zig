@@ -24,7 +24,6 @@ pub fn main() !void {
     _ = args.next();
     if (args.next()) |arg| {
         var file = try std.fs.cwd().openFile(arg, .{});
-        std.debug.print("Attempting to open file: '{s}\n", .{arg});
         var source = try file.readToEndAlloc(allocator, 100000);
         var vm = VM.init(allocator);
         var res = try vm.interpret(source);

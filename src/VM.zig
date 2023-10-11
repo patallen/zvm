@@ -44,12 +44,16 @@ pub fn deinit(self: *Self) void {
     self.globals.deinit();
 }
 
-fn compileToChunk(self: *Self, source: []const u8) !void {
+fn compileToChunk(self: *Self, source: []const u8) error{CompileError}!void {
     // TODO: This is not being deinitialized... lifetimes are weird. Fix it.
     var compiler = Compiler.init(self.arena.allocator(), source);
 
-    var hadError = try compiler.compile();
-    _ = hadError;
+    var success = compiler.compile() catch {
+        return error.CompileError;
+    };
+    if (!success) {
+        return error.CompileError;
+    }
     self.chunk = compiler.chunk;
     if (debuginstructions) {
         try debug.disassembleChunk(&self.chunk, "chunk");
@@ -195,6 +199,7 @@ pub fn run(self: *Self) !InterpretResult {
                 } else {
                     // runtime error
                     std.debug.print("Undefined variable: '{s}'\n", .{name_string.bytes});
+                    return .err;
                 }
             },
             .set_global => {
@@ -205,7 +210,17 @@ pub fn run(self: *Self) !InterpretResult {
                 } else {
                     // runtime error
                     std.debug.print("Cannot assign to undefined name: '{s}'\n", .{name_string.bytes});
+                    return .err;
                 }
+            },
+            .set_local => {
+                var index = self.readByte();
+                self.stack[index] = self.peek(0);
+            },
+            .load_local => {
+                var index = self.readByte();
+                var value = self.stack[index];
+                self.push(value);
             },
         }
     }
