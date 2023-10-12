@@ -1,0 +1,33 @@
+if (true) {
+    print "[true] correct";
+}
+if (false) {
+    print "[false] incorrect";
+}
+if (0) {
+    print "[0] incorrect";
+}
+if (1) {
+    print "[1] correct";
+}
+if ("string") {
+    print "[string] correct";
+}
+
+var a = true;
+if (a) {
+    print "[variable:true] correct";
+}
+
+var b = false;
+if (b) {
+    print "[variable:false] incorrect";
+}
+
+if (1 == 1) {
+    print "[expression:true] correct";
+}
+
+if (1 != 1) {
+    print "[expression:false] incorrect";
+}

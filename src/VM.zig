@@ -223,6 +223,12 @@ pub fn run(self: *Self) !InterpretResult {
                 var value = self.stack[index];
                 self.push(value);
             },
+            .jump_if_false => {
+                var addr = self.readWord();
+                if (!valIsTruthy(self.pop())) {
+                    self.ip = addr;
+                }
+            },
         }
     }
     return .ok;
@@ -245,6 +251,12 @@ fn readByte(self: *Self) u8 {
     var byte = self.chunk.readByte(self.ip);
     self.ip += 1;
     return byte;
+}
+
+fn readWord(self: *Self) u16 {
+    var lhs: u16 = @intCast(self.readByte());
+    var rhs: u16 = @intCast(self.readByte());
+    return lhs << 8 | rhs;
 }
 
 fn push(self: *Self, value: Value) void {

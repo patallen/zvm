@@ -21,6 +21,7 @@ pub const Op = enum(u8) {
     set_global,
     load_local,
     set_local,
+    jump_if_false,
 };
 
 pub const Byte = u8;

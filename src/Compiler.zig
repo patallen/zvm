@@ -8,6 +8,12 @@ const Value = @import("./value.zig").Value;
 const Obj = @import("./object.zig").Obj;
 const copyString = @import("./object.zig").copyString;
 
+const Error = error{
+    OutOfMemory,
+    ChunkWriteError,
+    InvalidCharacter,
+};
+
 const UNARY_PRECEDENCE = 5;
 
 const OpInfo = struct {
@@ -50,6 +56,7 @@ pub fn compile(self: *Self) !bool {
     while (!self.match(.eof)) {
         try self.declaration();
     }
+    try debug.disassembleChunk(&self.chunk, "compiler");
     return !self.p.hadError;
 }
 
@@ -105,7 +112,7 @@ fn handleInvalidToken(self: *Self) bool {
     return false;
 }
 
-fn processOperator(self: *Self, min_prec: usize) error{ OutOfMemory, ChunkWriteError, InvalidCharacter }!bool {
+fn processOperator(self: *Self, min_prec: usize) Error!bool {
     if (self.check(.eof)) return false;
     var current = self.p.current;
     var op_info = getOpInfo(current) orelse return false;
@@ -179,8 +186,35 @@ fn declaration(self: *Self) error{ InvalidCharacter, ChunkWriteError, OutOfMemor
     if (self.p.panicMode) self.synchronize();
 }
 
-fn statement(self: *Self) !void {
-    if (self.match(.kw_print)) {
+fn ifStatement(self: *Self) Error!void {
+    self.consume(.l_paren, "Expected opening paren.");
+    try self.computeExpression(0);
+    self.consume(.r_paren, "Expected closing paren.");
+    var jump_start = try self.emitJump(.jump_if_false);
+    try self.statement();
+    self.patchJump(jump_start);
+}
+
+fn emitJump(self: *Self, op: Chunk.Op) !usize {
+    try self.emitOp(op);
+    var jump_start_ip = self.chunk.code.items.len;
+    try self.emitByte(0xFF);
+    try self.emitByte(0xFF);
+    return jump_start_ip;
+}
+
+fn patchJump(self: *Self, jump_ip: usize) void {
+    var jump_to = self.chunk.code.items.len;
+    var rhs: u8 = @intCast(jump_to & 0xFF);
+    var lhs: u8 = @intCast(jump_to >> 8 & 0xFF);
+    self.chunk.code.items[jump_ip] = lhs;
+    self.chunk.code.items[jump_ip + 1] = rhs;
+}
+
+fn statement(self: *Self) Error!void {
+    if (self.match(.kw_if)) {
+        try self.ifStatement();
+    } else if (self.match(.kw_print)) {
         try self.printStatement();
     } else if (self.match(.l_brace)) {
         self.beginScope();
@@ -272,8 +306,10 @@ fn variableDeclaration(self: *Self) !void {
 }
 
 fn defineVariable(self: *Self, index: u8) !void {
+    // TODO: Should globals have associate locals? This feels like it shouldn't matter if
+    // scope_depth is 0, but it does.
+    self.markLocalInitialized();
     if (self.scope_depth > 0) {
-        self.markLocalInitialized();
         return;
     }
     try self.emitOp(.define_global);

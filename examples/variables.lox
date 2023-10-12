@@ -1,8 +1,11 @@
-{
-    var a = "outer";
-    {
-        var a = 0;
-        print a;
-    }
-    print a;
-}
+var x = 10;
+var y = "ten";
+var z = false;
+
+x = 99;
+y = "small";
+z = true;
+
+var nil = null;
+
+print x; print y; print z; print nil;
