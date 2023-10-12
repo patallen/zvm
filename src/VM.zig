@@ -236,6 +236,10 @@ pub fn run(self: *Self) !InterpretResult {
                 var jump_offset = self.readWord();
                 self.ip += jump_offset;
             },
+            .loop => {
+                var loop_offset = self.readWord();
+                self.ip -= loop_offset;
+            },
         }
     }
     return .ok;
