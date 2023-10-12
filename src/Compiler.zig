@@ -17,31 +17,17 @@ const OpInfo = struct {
 
 const Local = struct {
     name: Tokenizer.Token,
+    // depth is set to null initially, and updated once variable is initialized.
     depth: ?u8,
 };
 
-fn getOpInfo(tok: Tokenizer.Token) ?OpInfo {
-    return switch (tok.tag) {
-        .lt => .{ .prec = 0, .assoc = .left },
-        .gt => .{ .prec = 0, .assoc = .left },
-        .eq_eq => .{ .prec = 0, .assoc = .left },
-        .bang_eq => .{ .prec = 0, .assoc = .left },
-        .plus => .{ .prec = 1, .assoc = .left },
-        .minus => .{ .prec = 1, .assoc = .left },
-        .star => .{ .prec = 2, .assoc = .left },
-        .slash => .{ .prec = 2, .assoc = .left },
-        .star_star => .{ .prec = 3, .assoc = .right },
-        else => null,
-    };
-}
-
-locals: [256]Local,
-local_count: i16,
-scope_depth: u8,
 allocator: Allocator,
 source: []const u8,
 chunk: Chunk,
 p: Parse,
+locals: [256]Local,
+local_count: u8 = 0,
+scope_depth: u8 = 0,
 
 const Self = @This();
 
@@ -52,14 +38,11 @@ pub fn init(allocator: Allocator, source: []const u8) Self {
         .chunk = Chunk.init(allocator),
         .source = source,
         .locals = .{},
-        .local_count = 0,
-        .scope_depth = 0,
     };
 }
 
 pub fn deinit(self: *Self) void {
     self.chunk.deinit();
-    self.locals.deinit();
 }
 
 pub fn compile(self: *Self) !bool {
@@ -107,11 +90,6 @@ fn emitConstant(self: *Self, value: Value) !void {
     try self.emitByte(try self.chunk.addConstant(value));
 }
 
-fn emitGlobal(self: *Self, value: Value) !void {
-    _ = value;
-    _ = self;
-}
-
 fn number(self: *Self) !void {
     var loc = self.p.previous.loc;
     var strval = self.source[loc.start..loc.end];
@@ -119,29 +97,32 @@ fn number(self: *Self) !void {
     try self.emitConstant(Value.number(fvalue));
 }
 
-fn computeExpression(self: *Self, min_prec: usize) !void {
-    if (self.p.current.tag == .eof) return;
+fn handleInvalidToken(self: *Self) bool {
     if (self.p.current.tag == .invalid) {
         self.p.errorAtCurrent("Invalid token");
-        return;
+        return true;
     }
+    return false;
+}
 
+fn processOperator(self: *Self, min_prec: usize) error{ OutOfMemory, ChunkWriteError, InvalidCharacter }!bool {
+    if (self.check(.eof)) return false;
+    var current = self.p.current;
+    var op_info = getOpInfo(current) orelse return false;
+
+    if (op_info.prec < min_prec) return false;
+    var next_min_prec = if (op_info.assoc == .left) op_info.prec + 1 else op_info.prec;
+
+    self.p.advance();
+    try self.computeExpression(next_min_prec);
+    try self.computeOp(current);
+    return true;
+}
+
+fn computeExpression(self: *Self, min_prec: usize) !void {
+    if (self.check(.eof) or self.handleInvalidToken()) return;
     try self.computeAtom();
-    while (true) {
-        var current = self.p.current;
-        if (current.tag == .eof) break;
-        if (getOpInfo(current)) |op_info| {
-            if (op_info.prec < min_prec) {
-                break;
-            }
-            var next_min_prec = if (op_info.assoc == .left) op_info.prec + 1 else op_info.prec;
-            self.p.advance();
-            try self.computeExpression(next_min_prec);
-            try self.computeOp(current);
-        } else {
-            break;
-        }
-    }
+    while (true) if (!try self.processOperator(min_prec)) break;
 }
 
 fn computeOp(self: *Self, token: Tokenizer.Token) !void {
@@ -185,7 +166,6 @@ fn synchronize(self: *Self) void {
 }
 
 fn computeUnaryExpression(self: *Self, op: Chunk.Op) !void {
-    self.p.advance();
     try self.computeExpression(UNARY_PRECEDENCE);
     try self.emitOp(op);
 }
@@ -212,7 +192,7 @@ fn statement(self: *Self) !void {
 }
 
 fn resolveLocal(self: *Self, tok: *Tokenizer.Token) ?u8 {
-    var i: u8 = @intCast(self.local_count);
+    var i = self.local_count;
     while (i > 0) : (i -= 1) {
         var local = self.locals[i - 1];
         if (self.identifiersEqual(tok.*, local.name)) {
@@ -234,7 +214,7 @@ fn endScope(self: *Self) !void {
     // local values are removed from scope at runtime.
     self.scope_depth -= 1;
     while (self.local_count > 0) : (self.local_count -= 1) {
-        var local = self.locals[@intCast(self.local_count - 1)];
+        var local = self.locals[self.local_count - 1];
         if (local.depth == null) break;
         if (self.scope_depth >= local.depth.?) break;
         try self.emitOp(.pop);
@@ -326,40 +306,22 @@ fn computeAtom(self: *Self) error{ ChunkWriteError, OutOfMemory, InvalidCharacte
     if (getOpInfo(current) != null) {
         self.p.errorAtCurrent("Expected an atom");
     }
+    self.p.advance();
     switch (current.tag) {
         .minus => try self.computeUnaryExpression(.negate),
         .bang => try self.computeUnaryExpression(.not),
         .l_paren => {
-            self.p.advance();
             try self.computeExpression(0);
             self.consume(.r_paren, "Expected closing paren");
         },
-        .r_paren => self.p.errorAtCurrent("Invalid token"),
-        .eof => self.p.errorAtCurrent("Source ended unexpectedly"),
-        .kw_false => {
-            self.p.advance();
-            try self.emitOp(.false);
-        },
-        .kw_true => {
-            self.p.advance();
-            try self.emitOp(.true);
-        },
-        .kw_null => {
-            self.p.advance();
-            try self.emitOp(.null);
-        },
-        .number_literal => {
-            self.p.advance();
-            try self.number();
-        },
-        .string_literal => {
-            self.p.advance();
-            try self.string();
-        },
-        .ident => {
-            self.p.advance();
-            try self.namedVariable();
-        },
+        .r_paren => self.p.errorAtPrevious("Invalid token"),
+        .eof => self.p.errorAtPrevious("Source ended unexpectedly"),
+        .kw_false => try self.emitOp(.false),
+        .kw_true => try self.emitOp(.true),
+        .kw_null => try self.emitOp(.null),
+        .number_literal => try self.number(),
+        .string_literal => try self.string(),
+        .ident => try self.namedVariable(),
         else => {
             std.debug.print("reached 'unreachable' atom token:{any}: '{s}'\n", .{
                 current.tag,
@@ -404,13 +366,28 @@ fn markLocalInitialized(self: *Self) void {
     self.locals[@intCast(self.local_count - 1)].depth = self.scope_depth;
 }
 
+fn getOpInfo(tok: Tokenizer.Token) ?OpInfo {
+    return switch (tok.tag) {
+        .lt => .{ .prec = 0, .assoc = .left },
+        .gt => .{ .prec = 0, .assoc = .left },
+        .eq_eq => .{ .prec = 0, .assoc = .left },
+        .bang_eq => .{ .prec = 0, .assoc = .left },
+        .plus => .{ .prec = 1, .assoc = .left },
+        .minus => .{ .prec = 1, .assoc = .left },
+        .star => .{ .prec = 2, .assoc = .left },
+        .slash => .{ .prec = 2, .assoc = .left },
+        .star_star => .{ .prec = 3, .assoc = .right },
+        else => null,
+    };
+}
+
 test "Compiler" {
     std.debug.print("\n=== Starting Compiler Tests ===\n", .{});
     const Compiler = @This();
-    const source = "!(5 - 4 > 3 * 2 == !false)";
+    const source = "!(5 - 4 > 3 * 2 == !false);";
 
     var compiler = Compiler.init(std.testing.allocator, source);
     defer compiler.deinit();
     _ = try compiler.compile();
-    try debug.disassembleChunk(&compiler.chunk, "Compiler Test");
+    // try debug.disassembleChunk(&compiler.chunk, "Compiler Test");
 }

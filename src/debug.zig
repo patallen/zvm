@@ -77,6 +77,5 @@ test "debug" {
     try chunk.writeByte(try chunk.addConstant(Value.number(420.69)), 123);
     try chunk.writeOp(.constant, 124);
     try chunk.writeByte(try chunk.addConstant(Value.number(69)), 124);
-    try chunk.writeOp(.ret, 124);
     try disassembleChunk(&chunk, "main");
 }

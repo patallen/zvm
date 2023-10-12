@@ -10,7 +10,7 @@ const copyString = @import("./object.zig").copyString;
 const ObjStringHashMap = @import("./hashmap.zig").ObjStringHashMap;
 const concat = @import("./value.zig").concat;
 
-const debuginstructions: bool = true;
+const debuginstructions: bool = false;
 
 allocator: std.mem.Allocator,
 ip: usize = 0,
@@ -262,6 +262,6 @@ test "vm" {
     const VM = @This();
     var vm = VM.init(std.testing.allocator);
     defer vm.deinit();
-    var res = try vm.interpret("\"hi\"");
+    var res = try vm.interpret("var x = 10;");
     _ = res;
 }
