@@ -190,23 +190,41 @@ fn ifStatement(self: *Self) Error!void {
     self.consume(.l_paren, "Expected opening paren.");
     try self.computeExpression(0);
     self.consume(.r_paren, "Expected closing paren.");
-    var jump_start = try self.emitJump(.jump_if_false);
+
+    // Emit jump for false condition
+    var then_jump = try self.emitJump(.jump_if_false);
+
+    // Pop the condition if it was true
+    try self.emitOp(.pop);
+
+    // True block
     try self.statement();
-    self.patchJump(jump_start);
+
+    // Emit jump to skip else block
+    var else_jump = try self.emitJump(.jump);
+
+    // Patch the jump for false condition
+    self.patchJump(then_jump);
+
+    // Else block
+    if (self.match(.kw_else)) try self.statement();
+
+    // Patch the jump to skip else block
+    self.patchJump(else_jump);
 }
 
 fn emitJump(self: *Self, op: Chunk.Op) !usize {
     try self.emitOp(op);
-    var jump_start_ip = self.chunk.code.items.len;
     try self.emitByte(0xFF);
     try self.emitByte(0xFF);
-    return jump_start_ip;
+    return self.chunk.code.items.len - 2;
 }
 
 fn patchJump(self: *Self, jump_ip: usize) void {
     var jump_to = self.chunk.code.items.len;
-    var rhs: u8 = @intCast(jump_to & 0xFF);
-    var lhs: u8 = @intCast(jump_to >> 8 & 0xFF);
+    var offset = jump_to - jump_ip - 2;
+    var rhs: u8 = @intCast(offset & 0xFF);
+    var lhs: u8 = @intCast(offset >> 8 & 0xFF);
     self.chunk.code.items[jump_ip] = lhs;
     self.chunk.code.items[jump_ip + 1] = rhs;
 }

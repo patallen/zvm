@@ -49,6 +49,7 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
         .load_local => try byteInstruction("LOAD_LOCAL", chunk, offset),
         .set_local => try byteInstruction("SET_LOCAL", chunk, offset),
         .jump_if_false => try wordInstruction("JUMP_IF_FALSE", chunk, offset),
+        .jump => try wordInstruction("JUMP", chunk, offset),
     };
 }
 fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) !usize {

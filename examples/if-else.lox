@@ -3,6 +3,8 @@ var y = x;
 if (0){
     var a = 2;
     print(a);
+} else {
+    print "hello";
 }
 
 print x;

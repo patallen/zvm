@@ -186,6 +186,7 @@ pub fn run(self: *Self) !InterpretResult {
             },
             .pop => {
                 _ = self.pop();
+                // std.debug.print("Popping\n", .{});
             },
             .define_global => {
                 var global_name = self.chunk.getConstant(self.readByte());
@@ -222,12 +223,18 @@ pub fn run(self: *Self) !InterpretResult {
                 var index = self.readByte();
                 var value = self.stack[index];
                 self.push(value);
+                // std.debug.print("Load Local added: {d}\n", .{value});
             },
             .jump_if_false => {
-                var addr = self.readWord();
-                if (!valIsTruthy(self.pop())) {
-                    self.ip = addr;
+                var jump_offset = self.readWord();
+                if (!valIsTruthy(self.peek(0))) {
+                    // std.debug.print("Jumping to: {d}\n", .{self.ip + jump_offset});
+                    self.ip += jump_offset;
                 }
+            },
+            .jump => {
+                var jump_offset = self.readWord();
+                self.ip += jump_offset;
             },
         }
     }
