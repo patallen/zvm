@@ -1,0 +1,8 @@
+var x = 10;
+var y = x;
+if (0){
+    var a = 2;
+    print(a);
+}
+
+print x;

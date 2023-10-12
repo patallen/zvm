@@ -270,6 +270,7 @@ fn parseVariable(self: *Self, message: []const u8) !u8 {
 }
 
 fn declareVariable(self: *Self) !void {
+    if (self.scope_depth == 0) return;
     var i = self.local_count;
     while (i > 0) : (i -= 1) {
         var local = self.locals[@intCast(i - 1)];
@@ -306,10 +307,8 @@ fn variableDeclaration(self: *Self) !void {
 }
 
 fn defineVariable(self: *Self, index: u8) !void {
-    // TODO: Should globals have associate locals? This feels like it shouldn't matter if
-    // scope_depth is 0, but it does.
-    self.markLocalInitialized();
     if (self.scope_depth > 0) {
+        self.markLocalInitialized();
         return;
     }
     try self.emitOp(.define_global);
