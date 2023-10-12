@@ -211,10 +211,14 @@ fn statement(self: *Self) !void {
     }
 }
 
-fn resolveLocal(self: *Self, tok: Tokenizer.Token) ?u8 {
-    var i: u8 = @intCast(self.local_count - 1);
+fn resolveLocal(self: *Self, tok: *Tokenizer.Token) ?u8 {
+    var i: u8 = @intCast(self.local_count);
     while (i > 0) : (i -= 1) {
-        if (self.identifiersEqual(tok, self.locals[i].name)) {
+        var local = self.locals[i - 1];
+        if (self.identifiersEqual(tok.*, local.name)) {
+            if (local.depth == null) {
+                self.p.errorAt(tok, "variable not fully initialized");
+            }
             return i - 1;
         }
     }
@@ -226,6 +230,8 @@ fn beginScope(self: *Self) void {
 }
 
 fn endScope(self: *Self) !void {
+    // "Remove" locals at the current scope depth and emit pop operation codes so that
+    // local values are removed from scope at runtime.
     self.scope_depth -= 1;
     while (self.local_count > 0) : (self.local_count -= 1) {
         var local = self.locals[@intCast(self.local_count - 1)];
@@ -235,7 +241,7 @@ fn endScope(self: *Self) !void {
     }
 }
 
-pub fn parseBlock(self: *Self) !void {
+fn parseBlock(self: *Self) !void {
     while (!self.check(.r_brace) and !self.check(.eof)) {
         try self.declaration();
     }
@@ -286,7 +292,10 @@ fn variableDeclaration(self: *Self) !void {
 }
 
 fn defineVariable(self: *Self, index: u8) !void {
-    if (self.scope_depth > 0) return;
+    if (self.scope_depth > 0) {
+        self.markLocalInitialized();
+        return;
+    }
     try self.emitOp(.define_global);
     try self.emitByte(index);
 }
@@ -296,7 +305,7 @@ fn addLocal(self: *Self, tok: Tokenizer.Token) !void {
         std.debug.print("Too many locals... this should be made an error\n", .{});
         return;
     }
-    self.locals[@intCast(self.local_count)] = .{ .depth = self.scope_depth, .name = tok };
+    self.locals[@intCast(self.local_count)] = .{ .depth = null, .name = tok };
     self.local_count += 1;
 }
 
@@ -345,9 +354,7 @@ fn computeAtom(self: *Self) error{ ChunkWriteError, OutOfMemory, InvalidCharacte
         },
         .string_literal => {
             self.p.advance();
-            const bytes = self.source[current.loc.start + 1 .. current.loc.end - 1];
-            var string_obj = try copyString(self.allocator, bytes);
-            try self.emitConstant(Value.obj(&string_obj.obj));
+            try self.string();
         },
         .ident => {
             self.p.advance();
@@ -368,7 +375,7 @@ fn namedVariable(self: *Self) !void {
     var arg: u8 = undefined;
     var set_op: Chunk.Op = undefined;
     var load_op: Chunk.Op = undefined;
-    if (self.resolveLocal(tok)) |locarg| {
+    if (self.resolveLocal(&tok)) |locarg| {
         set_op = .set_local;
         load_op = .load_local;
         arg = locarg;
@@ -384,6 +391,17 @@ fn namedVariable(self: *Self) !void {
         try self.emitOp(load_op);
     }
     try self.emitByte(arg);
+}
+
+fn string(self: *Self) !void {
+    var tok = self.p.previous;
+    const bytes = self.source[tok.loc.start + 1 .. tok.loc.end - 1];
+    var string_obj = try copyString(self.allocator, bytes);
+    try self.emitConstant(Value.obj(&string_obj.obj));
+}
+
+fn markLocalInitialized(self: *Self) void {
+    self.locals[@intCast(self.local_count - 1)].depth = self.scope_depth;
 }
 
 test "Compiler" {

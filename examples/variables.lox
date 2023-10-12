@@ -1,7 +1,8 @@
-var y = 2.2;
 {
-    var x = 10;
-    print x;
-    y = x + y;
+    var a = "outer";
+    {
+        var a = 0;
+        print a;
+    }
+    print a;
 }
-print y;
