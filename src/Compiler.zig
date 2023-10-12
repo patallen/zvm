@@ -213,6 +213,20 @@ fn ifStatement(self: *Self) Error!void {
     self.patchJump(else_jump);
 }
 
+fn emitLoop(self: *Self, loop_start: usize) !void {
+    var current_ip = self.chunk.code.items.len + 2;
+    var loop_offset = current_ip - loop_start;
+    if (loop_offset > std.math.maxInt(u16)) {
+        // TODO: Proper error handling
+        std.debug.print("Loop to big", .{});
+    }
+    var rhs: u8 = @intCast(loop_offset & 0xFF);
+    var lhs: u8 = @intCast(loop_offset >> 8 & 0xFF);
+    try self.emitOp(.loop);
+    try self.emitByte(lhs);
+    try self.emitByte(rhs);
+}
+
 fn emitJump(self: *Self, op: Chunk.Op) !usize {
     try self.emitOp(op);
     try self.emitByte(0xFF);
@@ -232,6 +246,8 @@ fn patchJump(self: *Self, jump_ip: usize) void {
 fn statement(self: *Self) Error!void {
     if (self.match(.kw_if)) {
         try self.ifStatement();
+    } else if (self.match(.kw_while)) {
+        try self.whileStatement();
     } else if (self.match(.kw_print)) {
         try self.printStatement();
     } else if (self.match(.l_brace)) {
@@ -271,6 +287,18 @@ fn endScope(self: *Self) !void {
         if (self.scope_depth >= local.depth.?) break;
         try self.emitOp(.pop);
     }
+}
+
+fn whileStatement(self: *Self) !void {
+    self.consume(.l_paren, "Expected opening paren after while");
+    var loop_to = self.chunk.code.items.len - 1;
+    try self.computeExpression(0);
+    self.consume(.r_paren, "Expected closing paren at end of while statement");
+    var jump = try self.emitJump(.jump_if_false);
+    try self.emitOp(.pop);
+    try self.statement();
+    try self.emitLoop(loop_to);
+    self.patchJump(jump);
 }
 
 fn parseBlock(self: *Self) !void {

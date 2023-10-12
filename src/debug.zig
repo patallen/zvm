@@ -48,8 +48,9 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
         .set_global => try constantInstruction("SET_GLOBAL", chunk, offset),
         .load_local => try byteInstruction("LOAD_LOCAL", chunk, offset),
         .set_local => try byteInstruction("SET_LOCAL", chunk, offset),
-        .jump_if_false => try wordInstruction("JUMP_IF_FALSE", chunk, offset),
-        .jump => try wordInstruction("JUMP", chunk, offset),
+        .jump_if_false => try jumpInstruction("JUMP_IF_FALSE", 1, chunk, offset),
+        .jump => try jumpInstruction("JUMP", 1, chunk, offset),
+        .loop => try jumpInstruction("LOOP", -1, chunk, offset),
     };
 }
 fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) !usize {
@@ -58,11 +59,11 @@ fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) !usize {
     return offset + 2;
 }
 
-fn wordInstruction(name: []const u8, chunk: *Chunk, offset: usize) !usize {
+fn jumpInstruction(name: []const u8, direction: i16, chunk: *Chunk, offset: usize) !usize {
     var lhs: u16 = @intCast(chunk.code.items[offset + 1]);
     var rhs: u16 = @intCast(chunk.code.items[offset + 2]);
     var word = lhs << 8 | rhs;
-    print("{s:<16}{d}\n", .{ name, word });
+    print("{s:<16}{d}\n", .{ name, @as(i16, @intCast(word)) * direction });
     return offset + 3;
 }
 
