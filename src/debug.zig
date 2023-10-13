@@ -63,8 +63,11 @@ fn jumpInstruction(name: []const u8, direction: i16, chunk: *Chunk, offset: usiz
     var lhs: u16 = @intCast(chunk.code.items[offset + 1]);
     var rhs: u16 = @intCast(chunk.code.items[offset + 2]);
     var word = lhs << 8 | rhs;
-    print("{s:<16}{d}\n", .{ name, @as(i16, @intCast(word)) * direction });
-    return offset + 3;
+    var amount = @as(isize, @intCast(word)) * direction;
+    var off = offset + 3;
+    var to: isize = @as(isize, @intCast(off)) + amount;
+    print("{s:<16}{d:<4} ({d})\n", .{ name, amount, to });
+    return off;
 }
 
 pub fn simpleInstruction(name: []const u8, offset: usize) !usize {

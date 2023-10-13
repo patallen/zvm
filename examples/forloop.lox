@@ -1,0 +1,10 @@
+var res = 0;
+for (var x = 0; x < 10; x = x + 1) {
+    res = res + 1;
+}
+
+if (res == 10) {
+    print "FOR LOOP: OK";
+} else {
+    print "FOR LOOP: ERR";
+}

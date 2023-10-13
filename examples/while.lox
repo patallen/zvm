@@ -1,7 +1,10 @@
 var x = 0;
-var res = "h";
-
-while (x < 10000) {
+while (x < 10) {
     x = x + 1;
 }
-print "done";
+
+if (x == 10) {
+    print "WHILE LOOP: OK";
+} else {
+    print "WHILE LOOP: ERR";
+}

@@ -1,7 +1,8 @@
 const std = @import("std");
 
 const KEYWORDS = std.ComptimeStringMap(Token.Tag, .{
-    .{ "fun", .kw_fn },
+    .{ "for", .kw_for },
+    .{ "fn", .kw_fn },
     .{ "class", .kw_class },
     .{ "if", .kw_if },
     .{ "else", .kw_else },
@@ -71,6 +72,7 @@ pub const Token = struct {
         kw_print,
         kw_return,
         kw_super,
+        kw_for,
 
         // special
         invalid,

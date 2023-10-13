@@ -269,6 +269,8 @@ fn patchJump(self: *Self, jump_ip: usize) void {
 fn statement(self: *Self) Error!void {
     if (self.match(.kw_if)) {
         try self.ifStatement();
+    } else if (self.match(.kw_for)) {
+        try self.forStatement();
     } else if (self.match(.kw_while)) {
         try self.whileStatement();
     } else if (self.match(.kw_print)) {
@@ -322,6 +324,48 @@ fn whileStatement(self: *Self) !void {
     try self.statement();
     try self.emitLoop(loop_to);
     self.patchJump(jump);
+}
+
+// if (
+//     var i = 0;  varDecl
+//     i < 10;     condition (expression) -> jump here after incr
+//     i = i + 1   incr (jump here from end of loop) ( from here, jump to condition)
+// )
+
+fn forStatement(self: *Self) !void {
+    self.beginScope();
+
+    // initializer
+    self.consume(.l_paren, "Expected opening paren after while");
+    if (self.match(.kw_var)) {
+        try self.variableDeclaration();
+    } else {
+        self.consume(.semicolon, "Expected semicolon if no variable declaration.");
+    }
+
+    // condition
+    // jump here to check condition
+    var loop_start = self.chunk.code.items.len - 1;
+    try self.computeExpression(0);
+    self.consume(.semicolon, "Expected semicolon after loop condition.");
+    var exit_jump = try self.emitJump(.jump_if_false);
+    try self.emitOp(.pop);
+    var body_jump = try self.emitJump(.jump);
+
+    // increment
+    var incr_start = self.chunk.code.items.len - 1;
+    try self.computeExpression(0);
+    self.consume(.r_paren, "Expected closing paren after for statement.");
+    try self.emitLoop(loop_start);
+
+    // body
+    self.patchJump(body_jump);
+    try self.statement();
+
+    try self.emitLoop(incr_start);
+    self.patchJump(exit_jump);
+    try self.emitOp(.pop);
+    try self.endScope();
 }
 
 fn parseBlock(self: *Self) !void {
