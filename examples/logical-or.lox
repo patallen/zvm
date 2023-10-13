@@ -1,0 +1,17 @@
+var test_name = "logical or";
+var x = 0;
+var calls = 0;
+
+while (x < 10 or 4 < 3 and 3 == 4) {
+    calls = calls + 1;
+    x = x + 1;
+}
+
+var result = "";
+if (calls == 10) {
+    result = "OK";
+} else {
+    result = "ERR";
+}
+
+print test_name + "..." + result;
