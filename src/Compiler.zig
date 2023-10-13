@@ -121,7 +121,15 @@ fn processOperator(self: *Self, min_prec: usize) Error!bool {
     var next_min_prec = if (op_info.assoc == .left) op_info.prec + 1 else op_info.prec;
 
     self.p.advance();
+    var jump: ?usize = null;
+    if (current.tag == .kw_and) {
+        jump = try self.emitJump(.jump_if_false);
+        try self.emitOp(.pop);
+    }
     try self.computeExpression(next_min_prec);
+    if (jump) |jump_value| {
+        self.patchJump(jump_value);
+    }
     try self.computeOp(current);
     return true;
 }
@@ -146,6 +154,7 @@ fn computeOp(self: *Self, token: Tokenizer.Token) !void {
             try self.emitOp(.equals);
             try self.emitOp(.not);
         },
+        .kw_and => {},
         else => {
             std.debug.print("reached 'unreachable' op token:{any}\n", .{token.tag});
             unreachable;
@@ -458,6 +467,7 @@ fn getOpInfo(tok: Tokenizer.Token) ?OpInfo {
         .star => .{ .prec = 2, .assoc = .left },
         .slash => .{ .prec = 2, .assoc = .left },
         .star_star => .{ .prec = 3, .assoc = .right },
+        .kw_and => .{ .prec = 0, .assoc = .left },
         else => null,
     };
 }
