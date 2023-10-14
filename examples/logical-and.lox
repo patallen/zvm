@@ -1,0 +1,20 @@
+var test_name = "logical ops";
+
+var x = 0;
+var y = 0;
+
+var calls = 0;
+while (x < 10 and y < 3) {
+    calls = calls + 1;
+    x = x + 1;
+    y = y + 1;
+}
+
+var result = "";
+if (calls == 3) {
+    result = "OK";
+} else {
+    result = "ERR";
+}
+
+print test_name + "..." + result;

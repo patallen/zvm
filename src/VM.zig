@@ -93,6 +93,7 @@ fn dumpStack(self: *Self) void {
 pub fn run(self: *Self) !InterpretResult {
     while (self.ip < self.chunk.code.items.len) {
         var instruction = self.readOp();
+        // _ = try debug.disassembleInstruction(&self.chunk, self.ip);
         switch (instruction) {
             .print, .ret => std.debug.print("{any}\n", .{self.pop()}),
             .constant => {
@@ -186,7 +187,6 @@ pub fn run(self: *Self) !InterpretResult {
             },
             .pop => {
                 _ = self.pop();
-                // std.debug.print("Popping\n", .{});
             },
             .define_global => {
                 var global_name = self.chunk.getConstant(self.readByte());
@@ -223,12 +223,10 @@ pub fn run(self: *Self) !InterpretResult {
                 var index = self.readByte();
                 var value = self.stack[index];
                 self.push(value);
-                // std.debug.print("Load Local added: {d}\n", .{value});
             },
             .jump_if_false => {
                 var jump_offset = self.readWord();
                 if (!valIsTruthy(self.peek(0))) {
-                    // std.debug.print("Jumping to: {d}\n", .{self.ip + jump_offset});
                     self.ip += jump_offset;
                 }
             },

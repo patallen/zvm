@@ -112,17 +112,40 @@ fn handleInvalidToken(self: *Self) bool {
     return false;
 }
 
+fn logicalAnd(self: *Self) !void {
+    var jump = try self.emitJump(.jump_if_false);
+    try self.emitOp(.pop);
+    try self.computeExpression(0);
+    self.patchJump(jump);
+}
+
+fn logicalOr(self: *Self) !void {
+    var else_jump = try self.emitJump(.jump_if_false);
+    var then_jump = try self.emitJump(.jump);
+    self.patchJump(else_jump);
+    try self.emitOp(.pop);
+    try self.computeExpression(0);
+    self.patchJump(then_jump);
+}
+
 fn processOperator(self: *Self, min_prec: usize) Error!bool {
     if (self.check(.eof)) return false;
     var current = self.p.current;
     var op_info = getOpInfo(current) orelse return false;
-
-    if (op_info.prec < min_prec) return false;
     var next_min_prec = if (op_info.assoc == .left) op_info.prec + 1 else op_info.prec;
 
+    if (op_info.prec < min_prec) return false;
+
     self.p.advance();
-    try self.computeExpression(next_min_prec);
-    try self.computeOp(current);
+
+    switch (current.tag) {
+        .kw_or => try self.logicalOr(),
+        .kw_and => try self.logicalAnd(),
+        else => {
+            try self.computeExpression(next_min_prec);
+            try self.computeOp(current);
+        },
+    }
     return true;
 }
 
@@ -246,6 +269,8 @@ fn patchJump(self: *Self, jump_ip: usize) void {
 fn statement(self: *Self) Error!void {
     if (self.match(.kw_if)) {
         try self.ifStatement();
+    } else if (self.match(.kw_for)) {
+        try self.forStatement();
     } else if (self.match(.kw_while)) {
         try self.whileStatement();
     } else if (self.match(.kw_print)) {
@@ -299,6 +324,42 @@ fn whileStatement(self: *Self) !void {
     try self.statement();
     try self.emitLoop(loop_to);
     self.patchJump(jump);
+}
+
+fn forStatement(self: *Self) !void {
+    self.beginScope();
+
+    // initializer
+    self.consume(.l_paren, "Expected opening paren after while");
+    if (self.match(.kw_var)) {
+        try self.variableDeclaration();
+    } else {
+        self.consume(.semicolon, "Expected semicolon if no variable declaration.");
+    }
+
+    // condition
+    // jump here to check condition
+    var loop_start = self.chunk.code.items.len - 1;
+    try self.computeExpression(0);
+    self.consume(.semicolon, "Expected semicolon after loop condition.");
+    var exit_jump = try self.emitJump(.jump_if_false);
+    try self.emitOp(.pop);
+    var body_jump = try self.emitJump(.jump);
+
+    // increment
+    var incr_start = self.chunk.code.items.len - 1;
+    try self.computeExpression(0);
+    self.consume(.r_paren, "Expected closing paren after for statement.");
+    try self.emitLoop(loop_start);
+
+    // body
+    self.patchJump(body_jump);
+    try self.statement();
+
+    try self.emitLoop(incr_start);
+    self.patchJump(exit_jump);
+    try self.emitOp(.pop);
+    try self.endScope();
 }
 
 fn parseBlock(self: *Self) !void {
@@ -458,6 +519,8 @@ fn getOpInfo(tok: Tokenizer.Token) ?OpInfo {
         .star => .{ .prec = 2, .assoc = .left },
         .slash => .{ .prec = 2, .assoc = .left },
         .star_star => .{ .prec = 3, .assoc = .right },
+        .kw_and => .{ .prec = 0, .assoc = .left },
+        .kw_or => .{ .prec = 0, .assoc = .left },
         else => null,
     };
 }
