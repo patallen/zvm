@@ -44,6 +44,11 @@ pub const Value = struct {
         return @fieldParentPtr(Obj.String, "obj", self.asObj());
     }
 
+    pub fn asFunctionObj(self: *const Value) *Obj.Function {
+        assert(self.isObjType(.obj, .string));
+        return @fieldParentPtr(Obj.Function, "obj", self.asObj());
+    }
+
     pub fn asRawString(self: *const Value) []const u8 {
         return self.asStringObj().bytes;
     }
@@ -62,7 +67,8 @@ pub const Value = struct {
                 try writer.print("{d}", .{self.as.number});
             },
             .obj => switch (self.as.obj.ty) {
-                .string => try writer.print("\"{s}\"", .{Obj.String.fromObj(self.as.obj).bytes}),
+                .string => try writer.print("{s}", .{Obj.String.fromObj(self.as.obj).bytes}),
+                .function => try writer.print("{any}()", .{Obj.Function.fromObj(self.as.obj).name}),
             },
         };
     }
@@ -88,9 +94,9 @@ test "concat" {
 
     var result = try concat(allocator, Value.obj(&a.obj), Value.obj(&b.obj));
     var string = result.asStringObj();
-    defer a.deinit(allocator);
-    defer b.deinit(allocator);
-    defer string.deinit(allocator);
+    defer a.obj.deinit(allocator);
+    defer b.obj.deinit(allocator);
+    defer string.obj.deinit(allocator);
 
     try std.testing.expectEqualSlices(u8, "Hello, World!", result.asRawString());
 }

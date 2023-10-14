@@ -14,7 +14,7 @@ const debuginstructions: bool = false;
 
 allocator: std.mem.Allocator,
 ip: usize = 0,
-chunk: Chunk = undefined,
+chunk: *Chunk = undefined,
 arena: std.heap.ArenaAllocator,
 sp: u8,
 stack: [256]Value,
@@ -45,9 +45,9 @@ pub fn deinit(self: *Self) void {
     self.globals.deinit();
 }
 
-fn compileToChunk(self: *Self, source: []const u8) error{CompileError}!void {
+fn compileToChunk(self: *Self, source: []const u8) error{ CompileError, OutOfMemory }!void {
     // TODO: This is not being deinitialized... lifetimes are weird. Fix it.
-    var compiler = Compiler.init(self.arena.allocator(), source);
+    var compiler = try Compiler.init(self.arena.allocator(), source, .script);
 
     var success = compiler.compile() catch {
         return error.CompileError;
@@ -55,9 +55,9 @@ fn compileToChunk(self: *Self, source: []const u8) error{CompileError}!void {
     if (!success) {
         return error.CompileError;
     }
-    self.chunk = compiler.chunk;
+    self.chunk = compiler.currentChunk();
     if (debuginstructions) {
-        try debug.disassembleChunk(&self.chunk, "chunk");
+        try debug.disassembleChunk(compiler.currentChunk(), "chunk");
     }
 }
 
@@ -118,6 +118,9 @@ pub fn run(self: *Self) !InterpretResult {
                         .string => {
                             var value = try concat(self.arena.allocator(), a, b);
                             self.push(value);
+                        },
+                        .function => {
+                            std.debug.print("add operation not supported for functions\n", .{});
                         },
                     },
                     .bool => std.debug.print("can't add two bools together.\n", .{}),

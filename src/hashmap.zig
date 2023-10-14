@@ -27,10 +27,10 @@ test ObjStringHashMap {
     var hm = MashHap.init(std.testing.allocator);
     defer hm.deinit();
 
-    var stringobj: *Obj.String = try copyString(std.testing.allocator, "this is a key");
-    defer stringobj.deinit(std.testing.allocator);
+    var string: *Obj.String = try copyString(std.testing.allocator, "this is a key");
+    defer string.obj.deinit(std.testing.allocator);
 
-    try hm.put(stringobj, 69);
+    try hm.put(string, 69);
     try std.testing.expectEqual(hm.unmanaged.size, 1);
-    try std.testing.expectEqual(hm.get(stringobj).?, 69);
+    try std.testing.expectEqual(hm.get(string).?, 69);
 }

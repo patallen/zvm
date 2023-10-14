@@ -27,9 +27,15 @@ const Local = struct {
     depth: ?u8,
 };
 
+pub const FunctionType = enum {
+    script,
+    function,
+};
+
+func: *Obj.Function,
+func_type: FunctionType,
 allocator: Allocator,
 source: []const u8,
-chunk: Chunk,
 p: Parse,
 locals: [256]Local,
 local_count: u8 = 0,
@@ -37,18 +43,26 @@ scope_depth: u8 = 0,
 
 const Self = @This();
 
-pub fn init(allocator: Allocator, source: []const u8) Self {
-    return .{
+pub fn init(allocator: Allocator, source: []const u8, func_type: FunctionType) !Self {
+    var func = try Obj.Function.init(allocator);
+    func.arity = 0;
+    func.name = try Obj.copyString(allocator, "<script>");
+
+    var compiler: Self = .{
+        .func = func,
+        .func_type = func_type,
         .allocator = allocator,
         .p = Parse.init(source),
-        .chunk = Chunk.init(allocator),
         .source = source,
         .locals = .{},
+        .local_count = 1,
     };
+    compiler.locals[0] = .{ .name = undefined, .depth = 0 };
+    return compiler;
 }
 
 pub fn deinit(self: *Self) void {
-    self.chunk.deinit();
+    self.currentChunk().deinit();
 }
 
 pub fn compile(self: *Self) !bool {
@@ -56,7 +70,7 @@ pub fn compile(self: *Self) !bool {
     while (!self.match(.eof)) {
         try self.declaration();
     }
-    try debug.disassembleChunk(&self.chunk, "compiler");
+    try debug.disassembleChunk(self.currentChunk(), "compiler");
     return !self.p.hadError;
 }
 
@@ -83,20 +97,20 @@ fn consume(self: *Self, expected_tag: Tokenizer.Token.Tag, message: []const u8) 
 
 // Bytecode Emitters
 fn emitByte(self: *Self, byte: u8) !void {
-    try self.chunk.writeByte(byte, self.p.previous.loc.lineno);
+    try self.currentChunk().writeByte(byte, self.p.previous.loc.lineno);
 }
 
 fn emitOp(self: *Self, op: Chunk.Op) !void {
-    try self.chunk.writeOp(op, self.p.previous.loc.lineno);
+    try self.currentChunk().writeOp(op, self.p.previous.loc.lineno);
 }
 
 fn emitReturn(self: *Self) !void {
-    try self.chunk.writeOp(.kw_return, self.p.previous.loc.lineno);
+    try self.currentChunk().writeOp(.kw_return, self.p.previous.loc.lineno);
 }
 
 fn emitConstant(self: *Self, value: Value) !void {
     try self.emitOp(.constant);
-    try self.emitByte(try self.chunk.addConstant(value));
+    try self.emitByte(try self.currentChunk().addConstant(value));
 }
 
 // Constant Creation
@@ -247,7 +261,7 @@ fn ifStatement(self: *Self) Error!void {
 }
 
 fn emitLoop(self: *Self, loop_start: usize) !void {
-    var current_ip = self.chunk.code.items.len + 2;
+    var current_ip = self.currentChunk().code.items.len + 2;
     var loop_offset = current_ip - loop_start;
     if (loop_offset > std.math.maxInt(u16)) {
         // TODO: Proper error handling
@@ -264,16 +278,16 @@ fn emitJump(self: *Self, op: Chunk.Op) !usize {
     try self.emitOp(op);
     try self.emitByte(0xFF);
     try self.emitByte(0xFF);
-    return self.chunk.code.items.len - 2;
+    return self.currentChunk().code.items.len - 2;
 }
 
 fn patchJump(self: *Self, jump_ip: usize) void {
-    var jump_to = self.chunk.code.items.len;
+    var jump_to = self.currentChunk().code.items.len;
     var offset = jump_to - jump_ip - 2;
     var rhs: u8 = @intCast(offset & 0xFF);
     var lhs: u8 = @intCast(offset >> 8 & 0xFF);
-    self.chunk.code.items[jump_ip] = lhs;
-    self.chunk.code.items[jump_ip + 1] = rhs;
+    self.currentChunk().code.items[jump_ip] = lhs;
+    self.currentChunk().code.items[jump_ip + 1] = rhs;
 }
 
 fn statement(self: *Self) Error!void {
@@ -326,7 +340,7 @@ fn endScope(self: *Self) !void {
 
 fn whileStatement(self: *Self) !void {
     self.consume(.l_paren, "Expected opening paren after while");
-    var loop_to = self.chunk.code.items.len - 1;
+    var loop_to = self.currentChunk().code.items.len - 1;
     try self.computeExpression(0);
     self.consume(.r_paren, "Expected closing paren at end of while statement");
     var jump = try self.emitJump(.jump_if_false);
@@ -349,7 +363,7 @@ fn forStatement(self: *Self) !void {
 
     // condition
     // jump here to check condition
-    var loop_start = self.chunk.code.items.len - 1;
+    var loop_start = self.currentChunk().code.items.len - 1;
     try self.computeExpression(0);
     self.consume(.semicolon, "Expected semicolon after loop condition.");
     var exit_jump = try self.emitJump(.jump_if_false);
@@ -357,7 +371,7 @@ fn forStatement(self: *Self) !void {
     var body_jump = try self.emitJump(.jump);
 
     // increment
-    var incr_start = self.chunk.code.items.len - 1;
+    var incr_start = self.currentChunk().code.items.len - 1;
     try self.computeExpression(0);
     self.consume(.r_paren, "Expected closing paren after for statement.");
     try self.emitLoop(loop_start);
@@ -412,7 +426,7 @@ fn identifiersEqual(self: *Self, a: Tokenizer.Token, b: Tokenizer.Token) bool {
 
 fn identifierConstant(self: *Self, tok: *Tokenizer.Token) !u8 {
     var string_obj = try copyString(self.allocator, self.source[tok.loc.start..tok.loc.end]);
-    return self.chunk.addConstant(Value.obj(&string_obj.obj));
+    return self.currentChunk().addConstant(Value.obj(&string_obj.obj));
 }
 
 fn variableDeclaration(self: *Self) !void {
@@ -528,12 +542,16 @@ fn getOpInfo(tok: Tokenizer.Token) ?OpInfo {
     };
 }
 
+pub fn currentChunk(self: *Self) *Chunk {
+    return &self.func.chunk;
+}
+
 test "Compiler" {
     std.debug.print("\n=== Starting Compiler Tests ===\n", .{});
     const Compiler = @This();
     const source = "!(5 - 4 > 3 * 2 == !false);";
 
-    var compiler = Compiler.init(std.testing.allocator, source);
+    var compiler = try Compiler.init(std.testing.allocator, source, .script);
     defer compiler.deinit();
     _ = try compiler.compile();
     // try debug.disassembleChunk(&compiler.chunk, "Compiler Test");
