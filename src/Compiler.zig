@@ -60,14 +60,7 @@ pub fn compile(self: *Self) !bool {
     return !self.p.hadError;
 }
 
-fn consume(self: *Self, expected_tag: Tokenizer.Token.Tag, message: []const u8) void {
-    if (self.p.current.tag == expected_tag) {
-        self.p.advance();
-    } else {
-        self.p.errorAtCurrent(message);
-    }
-}
-
+// Utils
 fn check(self: *Self, expected_tag: Tokenizer.Token.Tag) bool {
     return self.p.current.tag == expected_tag;
 }
@@ -80,6 +73,15 @@ fn match(self: *Self, expected_tag: Tokenizer.Token.Tag) bool {
     return false;
 }
 
+fn consume(self: *Self, expected_tag: Tokenizer.Token.Tag, message: []const u8) void {
+    if (self.p.current.tag == expected_tag) {
+        self.p.advance();
+    } else {
+        self.p.errorAtCurrent(message);
+    }
+}
+
+// Bytecode Emitters
 fn emitByte(self: *Self, byte: u8) !void {
     try self.chunk.writeByte(byte, self.p.previous.loc.lineno);
 }
@@ -95,6 +97,14 @@ fn emitReturn(self: *Self) !void {
 fn emitConstant(self: *Self, value: Value) !void {
     try self.emitOp(.constant);
     try self.emitByte(try self.chunk.addConstant(value));
+}
+
+// Constant Creation
+fn string(self: *Self) !void {
+    var tok = self.p.previous;
+    const bytes = self.source[tok.loc.start + 1 .. tok.loc.end - 1];
+    var string_obj = try copyString(self.allocator, bytes);
+    try self.emitConstant(Value.obj(&string_obj.obj));
 }
 
 fn number(self: *Self) !void {
@@ -200,7 +210,7 @@ fn computeUnaryExpression(self: *Self, op: Chunk.Op) !void {
     try self.emitOp(op);
 }
 
-fn declaration(self: *Self) error{ InvalidCharacter, ChunkWriteError, OutOfMemory }!void {
+fn declaration(self: *Self) Error!void {
     if (self.match(.kw_var)) {
         try self.variableDeclaration();
     } else {
@@ -326,12 +336,6 @@ fn whileStatement(self: *Self) !void {
     self.patchJump(jump);
 }
 
-// if (
-//     var i = 0;  varDecl
-//     i < 10;     condition (expression) -> jump here after incr
-//     i = i + 1   incr (jump here from end of loop) ( from here, jump to condition)
-// )
-
 fn forStatement(self: *Self) !void {
     self.beginScope();
 
@@ -449,7 +453,7 @@ fn printStatement(self: *Self) !void {
     try self.emitOp(.print);
 }
 
-fn computeAtom(self: *Self) error{ ChunkWriteError, OutOfMemory, InvalidCharacter }!void {
+fn computeAtom(self: *Self) Error!void {
     var current = self.p.current;
     if (getOpInfo(current) != null) {
         self.p.errorAtCurrent("Expected an atom");
@@ -501,13 +505,6 @@ fn namedVariable(self: *Self) !void {
         try self.emitOp(load_op);
     }
     try self.emitByte(arg);
-}
-
-fn string(self: *Self) !void {
-    var tok = self.p.previous;
-    const bytes = self.source[tok.loc.start + 1 .. tok.loc.end - 1];
-    var string_obj = try copyString(self.allocator, bytes);
-    try self.emitConstant(Value.obj(&string_obj.obj));
 }
 
 fn markLocalInitialized(self: *Self) void {
