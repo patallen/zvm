@@ -40,6 +40,8 @@ p: Parse,
 locals: [256]Local,
 local_count: u8 = 0,
 scope_depth: u8 = 0,
+current: *Self = undefined,
+enclosing: *Self = undefined,
 
 const Self = @This();
 
@@ -57,6 +59,7 @@ pub fn init(allocator: Allocator, source: []const u8, func_type: FunctionType) !
         .locals = .{},
         .local_count = 1,
     };
+    compiler.current = &compiler;
     compiler.locals[0] = .{ .name = "", .depth = 0 };
     return compiler;
 }
@@ -232,7 +235,9 @@ fn computeUnaryExpression(self: *Self, op: Chunk.Op) !void {
 }
 
 fn declaration(self: *Self) Error!void {
-    if (self.match(.kw_var)) {
+    if (self.match(.kw_fn)) {
+        try self.functionDeclaration();
+    } else if (self.match(.kw_var)) {
         try self.variableDeclaration();
     } else {
         try self.statement();
@@ -439,6 +444,18 @@ fn identifierConstant(self: *Self, tok: *Tokenizer.Token) !u8 {
 fn variableDeclaration(self: *Self) !void {
     var global = try self.parseVariable("Expected variable name.");
     self.consume(.eq, "Expected '=' for variable assignment.");
+    try self.computeExpression(0);
+    self.consume(.semicolon, "Expected ';' following variable declaration.");
+    try self.defineVariable(global);
+}
+
+fn functionDeclaration(self: *Self) !void {
+    var compiler = Self.init(self.allocator, self.source);
+    defer compiler.deinit();
+    var name = try self.parseVariable("Expected function name.");
+    self.consume(.l_paren, "Expected open paren following function decl");
+    self.consume(.r_paren, "Expected closing paren after function params");
+    self.consume(.l_brace, "Expected '{' for after function decl;");
     try self.computeExpression(0);
     self.consume(.semicolon, "Expected ';' following variable declaration.");
     try self.defineVariable(global);
