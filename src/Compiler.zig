@@ -62,7 +62,10 @@ pub fn init(allocator: Allocator, source: []const u8, func_type: FunctionType) !
 }
 
 pub fn deinit(self: *Self) void {
-    self.currentChunk().deinit();
+    // TODO: Took a while to debug this msising "func name" free.
+    // There has got to be a better way of managing this.
+    self.func.name.obj.deinit(self.allocator);
+    self.func.obj.deinit(self.allocator);
 }
 
 pub fn compile(self: *Self) !bool {
