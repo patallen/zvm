@@ -22,7 +22,7 @@ const OpInfo = struct {
 };
 
 const Local = struct {
-    name: Tokenizer.Token,
+    name: []const u8,
     // depth is set to null initially, and updated once variable is initialized.
     depth: ?u8,
 };
@@ -312,7 +312,7 @@ fn resolveLocal(self: *Self, tok: *Tokenizer.Token) ?u8 {
     var i = self.local_count;
     while (i > 0) : (i -= 1) {
         var local = self.locals[i - 1];
-        if (self.identifiersEqual(tok.*, local.name)) {
+        if (self.identifiersEqual(self.source[tok.loc.start..tok.loc.end], local.name)) {
             if (local.depth == null) {
                 self.p.errorAt(tok, "variable not fully initialized");
             }
@@ -408,7 +408,8 @@ fn declareVariable(self: *Self) !void {
         if (local.depth != null and local.depth.? < self.scope_depth) {
             break;
         }
-        if (self.identifiersEqual(local.name, self.p.previous)) {
+        var loc = self.p.previous.loc;
+        if (self.identifiersEqual(local.name, self.source[loc.start..loc.end])) {
             std.debug.print("TODO: This should be made an error: Local already exists by that name.", .{});
             return;
         }
@@ -416,12 +417,11 @@ fn declareVariable(self: *Self) !void {
     try self.addLocal(self.p.previous);
 }
 
-fn identifiersEqual(self: *Self, a: Tokenizer.Token, b: Tokenizer.Token) bool {
-    var astr = self.source[a.loc.start..a.loc.end];
-    var bstr = self.source[b.loc.start..b.loc.end];
+fn identifiersEqual(self: *Self, a: []const u8, b: []const u8) bool {
+    _ = self;
     // TODO: Maybe move to a util?
-    if (astr.len != bstr.len) return false;
-    return std.mem.eql(u8, astr, bstr);
+    if (a.len != b.len) return false;
+    return std.mem.eql(u8, a, b);
 }
 
 fn identifierConstant(self: *Self, tok: *Tokenizer.Token) !u8 {
@@ -451,7 +451,8 @@ fn addLocal(self: *Self, tok: Tokenizer.Token) !void {
         std.debug.print("Too many locals... this should be made an error\n", .{});
         return;
     }
-    self.locals[@intCast(self.local_count)] = .{ .depth = null, .name = tok };
+    var name = self.source[tok.loc.start..tok.loc.end];
+    self.locals[@intCast(self.local_count)] = .{ .depth = null, .name = name };
     self.local_count += 1;
 }
 
