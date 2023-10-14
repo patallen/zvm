@@ -5,8 +5,8 @@ const Chunk = @import("./Chunk.zig");
 const Parse = @import("./Parse.zig");
 const Allocator = std.mem.Allocator;
 const Value = @import("./value.zig").Value;
-const Obj = @import("./object.zig").Obj;
-const copyString = @import("./object.zig").copyString;
+const Obj = @import("./Obj.zig");
+const copyString = Obj.copyString;
 
 const Error = error{
     OutOfMemory,

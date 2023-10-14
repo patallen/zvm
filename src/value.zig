@@ -1,7 +1,7 @@
 const std = @import("std");
-const Obj = @import("./object.zig").Obj;
+const Obj = @import("./Obj.zig");
+const copyString = Obj.copyString;
 const assert = std.debug.assert;
-const copyString = @import("./object.zig").copyString;
 
 pub const Value = struct {
     ty: Type,

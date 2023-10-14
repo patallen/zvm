@@ -1,6 +1,5 @@
 const std = @import("std");
-const object = @import("./object.zig");
-const Obj = object.Obj;
+const Obj = @import("./Obj.zig");
 
 const ObjStringContext = struct {
     pub fn hash(self: @This(), s: *Obj.String) u64 {
@@ -23,7 +22,7 @@ pub fn ObjStringHashMap(comptime V: type) type {
 }
 
 test ObjStringHashMap {
-    const copyString = object.copyString;
+    const copyString = Obj.copyString;
     const MashHap = ObjStringHashMap(usize);
     var hm = MashHap.init(std.testing.allocator);
     defer hm.deinit();
