@@ -5,10 +5,10 @@ const Op = @import("./Chunk.zig").Op;
 const Value = @import("./value.zig").Value;
 const Tokenizer = @import("./Tokenizer.zig");
 const Compiler = @import("./Compiler.zig");
-const Obj = @import("./object.zig").Obj;
-const copyString = @import("./object.zig").copyString;
+const Obj = @import("./Obj.zig");
 const ObjStringHashMap = @import("./hashmap.zig").ObjStringHashMap;
 const concat = @import("./value.zig").concat;
+const copyString = Obj.copyString;
 
 const debuginstructions: bool = false;
 
