@@ -49,13 +49,8 @@ fn compileToChunk(self: *Self, source: []const u8) error{ CompileError, OutOfMem
     // TODO: This is not being deinitialized... lifetimes are weird. Fix it.
     var compiler = try Compiler.init(self.arena.allocator(), source, .script);
 
-    var success = compiler.compile() catch {
-        return error.CompileError;
-    };
-    if (!success) {
-        return error.CompileError;
-    }
-    self.chunk = compiler.currentChunk();
+    var func = try compiler.compile();
+    self.chunk = &func.chunk;
     if (debuginstructions) {
         try debug.disassembleChunk(compiler.currentChunk(), "chunk");
     }

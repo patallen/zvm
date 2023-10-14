@@ -57,7 +57,7 @@ pub fn init(allocator: Allocator, source: []const u8, func_type: FunctionType) !
         .locals = .{},
         .local_count = 1,
     };
-    compiler.locals[0] = .{ .name = undefined, .depth = 0 };
+    compiler.locals[0] = .{ .name = "", .depth = 0 };
     return compiler;
 }
 
@@ -68,13 +68,17 @@ pub fn deinit(self: *Self) void {
     self.func.obj.deinit(self.allocator);
 }
 
-pub fn compile(self: *Self) !bool {
+pub fn compile(self: *Self) error{CompileError}!*Obj.Function {
     self.p.advance();
     while (!self.match(.eof)) {
-        try self.declaration();
+        self.declaration() catch {
+            return error.CompileError;
+        };
     }
-    try debug.disassembleChunk(self.currentChunk(), "compiler");
-    return !self.p.hadError;
+    if (self.p.hadError) {
+        try debug.disassembleChunk(self.currentChunk(), "compiler");
+    }
+    return self.func;
 }
 
 // Utils
