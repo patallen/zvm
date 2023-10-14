@@ -15,6 +15,7 @@ const Error = error{
 };
 
 const UNARY_PRECEDENCE = 5;
+const LOCALS_MAX: usize = 256;
 
 const OpInfo = struct {
     prec: u8,
@@ -32,43 +33,60 @@ pub const FunctionType = enum {
     function,
 };
 
-func: *Obj.Function,
-func_type: FunctionType,
+pub const CompileContext = struct {
+    func: *Obj.Function,
+    func_type: FunctionType,
+    enclosing: ?*CompileContext,
+    locals: [LOCALS_MAX]Local = undefined,
+    local_count: u8 = 0,
+    scope_depth: u8 = 0,
+
+    pub fn init(func: *Obj.Function, func_type: FunctionType, enclosing: ?*CompileContext) CompileContext {
+        return .{
+            .func = func,
+            .func_type = func_type,
+            .enclosing = enclosing,
+        };
+    }
+};
+
 allocator: Allocator,
+ctx: CompileContext,
 source: []const u8,
 p: Parse,
-locals: [256]Local,
-local_count: u8 = 0,
-scope_depth: u8 = 0,
-current: *Self = undefined,
-enclosing: *Self = undefined,
 
 const Self = @This();
 
-pub fn init(allocator: Allocator, source: []const u8, func_type: FunctionType) !Self {
+fn createFunction(allocator: std.mem.Allocator, name: []const u8) !*Obj.Function {
     var func = try Obj.Function.init(allocator);
-    func.arity = 0;
-    func.name = try Obj.copyString(allocator, "<script>");
+    func.name = try Obj.copyString(allocator, name);
+    return func;
+}
 
-    var compiler: Self = .{
+pub fn init(allocator: Allocator, source: []const u8) !Self {
+    var func = try createFunction(allocator, "<script>");
+    var ctx = CompileContext{
         .func = func,
-        .func_type = func_type,
+        .func_type = .script,
+        .enclosing = null,
+        .local_count = 1,
+    };
+    ctx.locals[0] = .{ .name = "fake", .depth = 0 };
+
+    return .{
+        .ctx = ctx,
         .allocator = allocator,
         .p = Parse.init(source),
         .source = source,
-        .locals = .{},
-        .local_count = 1,
     };
-    compiler.current = &compiler;
-    compiler.locals[0] = .{ .name = "", .depth = 0 };
-    return compiler;
 }
 
 pub fn deinit(self: *Self) void {
+    _ = self;
     // TODO: Took a while to debug this msising "func name" free.
     // There has got to be a better way of managing this.
-    self.func.name.obj.deinit(self.allocator);
-    self.func.obj.deinit(self.allocator);
+    // self.func.name.obj.deinit(self.allocator);
+    // self.func.obj.deinit(self.allocator);
 }
 
 pub fn compile(self: *Self) error{CompileError}!*Obj.Function {
@@ -81,7 +99,7 @@ pub fn compile(self: *Self) error{CompileError}!*Obj.Function {
     if (self.p.hadError) {
         try debug.disassembleChunk(self.currentChunk(), "compiler");
     }
-    return self.func;
+    return self.ctx.func;
 }
 
 // Utils
@@ -321,10 +339,11 @@ fn statement(self: *Self) Error!void {
 }
 
 fn resolveLocal(self: *Self, tok: *Tokenizer.Token) ?u8 {
-    var i = self.local_count;
+    var i = self.ctx.local_count;
     while (i > 0) : (i -= 1) {
-        var local = self.locals[i - 1];
-        if (self.identifiersEqual(self.source[tok.loc.start..tok.loc.end], local.name)) {
+        var local = self.ctx.locals[i - 1];
+        var name = self.source[tok.loc.start..tok.loc.end];
+        if (identifiersEqual(local.name, name)) {
             if (local.depth == null) {
                 self.p.errorAt(tok, "variable not fully initialized");
             }
@@ -335,17 +354,17 @@ fn resolveLocal(self: *Self, tok: *Tokenizer.Token) ?u8 {
 }
 
 fn beginScope(self: *Self) void {
-    self.scope_depth += 1;
+    self.ctx.scope_depth += 1;
 }
 
 fn endScope(self: *Self) !void {
     // "Remove" locals at the current scope depth and emit pop operation codes so that
     // local values are removed from scope at runtime.
-    self.scope_depth -= 1;
-    while (self.local_count > 0) : (self.local_count -= 1) {
-        var local = self.locals[self.local_count - 1];
+    self.ctx.scope_depth -= 1;
+    while (self.ctx.local_count > 0) : (self.ctx.local_count -= 1) {
+        var local = self.ctx.locals[self.ctx.local_count - 1];
         if (local.depth == null) break;
-        if (self.scope_depth >= local.depth.?) break;
+        if (self.ctx.scope_depth >= local.depth.?) break;
         try self.emitOp(.pop);
     }
 }
@@ -408,32 +427,25 @@ fn parseBlock(self: *Self) !void {
 fn parseVariable(self: *Self, message: []const u8) !u8 {
     self.consume(.ident, message);
     try self.declareVariable();
-    if (self.scope_depth > 0) return 0;
+    if (self.ctx.scope_depth > 0) return 0;
     return try self.identifierConstant(&self.p.previous);
 }
 
 fn declareVariable(self: *Self) !void {
-    if (self.scope_depth == 0) return;
-    var i = self.local_count;
+    if (self.ctx.scope_depth == 0) return;
+    var i = self.ctx.local_count;
     while (i > 0) : (i -= 1) {
-        var local = self.locals[@intCast(i - 1)];
-        if (local.depth != null and local.depth.? < self.scope_depth) {
+        var local = self.ctx.locals[@intCast(i - 1)];
+        if (local.depth != null and local.depth.? < self.ctx.scope_depth) {
             break;
         }
         var loc = self.p.previous.loc;
-        if (self.identifiersEqual(local.name, self.source[loc.start..loc.end])) {
+        if (identifiersEqual(local.name, self.source[loc.start..loc.end])) {
             std.debug.print("TODO: This should be made an error: Local already exists by that name.", .{});
             return;
         }
     }
     try self.addLocal(self.p.previous);
-}
-
-fn identifiersEqual(self: *Self, a: []const u8, b: []const u8) bool {
-    _ = self;
-    // TODO: Maybe move to a util?
-    if (a.len != b.len) return false;
-    return std.mem.eql(u8, a, b);
 }
 
 fn identifierConstant(self: *Self, tok: *Tokenizer.Token) !u8 {
@@ -450,19 +462,32 @@ fn variableDeclaration(self: *Self) !void {
 }
 
 fn functionDeclaration(self: *Self) !void {
-    var compiler = Self.init(self.allocator, self.source);
-    defer compiler.deinit();
-    var name = try self.parseVariable("Expected function name.");
+    var global = try self.parseVariable("Expect function name.");
+    self.markLocalInitialized();
+    try self.function(.function);
+    try self.defineVariable(global);
+}
+
+fn function(self: *Self, func_type: FunctionType) !void {
+    var loc = self.p.current.loc;
+    var func = try createFunction(self.allocator, self.source[loc.start..loc.end]);
+    var ctx = .{
+        .func = func,
+        .func_type = func_type,
+        .enclosing = &self.ctx,
+    };
+    self.ctx = ctx;
+
     self.consume(.l_paren, "Expected open paren following function decl");
     self.consume(.r_paren, "Expected closing paren after function params");
     self.consume(.l_brace, "Expected '{' for after function decl;");
     try self.computeExpression(0);
     self.consume(.semicolon, "Expected ';' following variable declaration.");
-    try self.defineVariable(global);
+    self.ctx = self.ctx.enclosing.?.*;
 }
 
 fn defineVariable(self: *Self, index: u8) !void {
-    if (self.scope_depth > 0) {
+    if (self.ctx.scope_depth > 0) {
         self.markLocalInitialized();
         return;
     }
@@ -471,13 +496,13 @@ fn defineVariable(self: *Self, index: u8) !void {
 }
 
 fn addLocal(self: *Self, tok: Tokenizer.Token) !void {
-    if (self.local_count >= 256) {
+    if (self.ctx.local_count >= 256) {
         std.debug.print("Too many locals... this should be made an error\n", .{});
         return;
     }
     var name = self.source[tok.loc.start..tok.loc.end];
-    self.locals[@intCast(self.local_count)] = .{ .depth = null, .name = name };
-    self.local_count += 1;
+    self.ctx.locals[@intCast(self.ctx.local_count)] = .{ .depth = null, .name = name };
+    self.ctx.local_count += 1;
 }
 
 fn expressionStatement(self: *Self) !void {
@@ -547,7 +572,7 @@ fn namedVariable(self: *Self) !void {
 }
 
 fn markLocalInitialized(self: *Self) void {
-    self.locals[@intCast(self.local_count - 1)].depth = self.scope_depth;
+    self.ctx.locals[@intCast(self.ctx.local_count - 1)].depth = self.ctx.scope_depth;
 }
 
 fn getOpInfo(tok: Tokenizer.Token) ?OpInfo {
@@ -568,7 +593,7 @@ fn getOpInfo(tok: Tokenizer.Token) ?OpInfo {
 }
 
 pub fn currentChunk(self: *Self) *Chunk {
-    return &self.func.chunk;
+    return &self.ctx.func.chunk;
 }
 
 test "Compiler" {
@@ -576,8 +601,14 @@ test "Compiler" {
     const Compiler = @This();
     const source = "!(5 - 4 > 3 * 2 == !false);";
 
-    var compiler = try Compiler.init(std.testing.allocator, source, .script);
+    var compiler = try Compiler.init(std.testing.allocator, source);
     defer compiler.deinit();
     _ = try compiler.compile();
     // try debug.disassembleChunk(&compiler.chunk, "Compiler Test");
+}
+
+fn identifiersEqual(a: []const u8, b: []const u8) bool {
+    // TODO: Maybe move to a util?
+    if (a.len != b.len) return false;
+    return std.mem.eql(u8, a, b);
 }

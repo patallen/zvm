@@ -66,7 +66,7 @@ pub fn deinit(self: *Self) void {
 
 fn compileToChunk(self: *Self, source: []const u8) error{ CompileError, OutOfMemory }!*Obj.Function {
     // TODO: This is not being deinitialized... lifetimes are weird. Fix it.
-    var compiler = try Compiler.init(self.arena.allocator(), source, .script);
+    var compiler = try Compiler.init(self.arena.allocator(), source);
 
     var func = try compiler.compile();
     if (debuginstructions) {
