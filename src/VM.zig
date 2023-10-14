@@ -12,13 +12,18 @@ const copyString = Obj.copyString;
 
 const debuginstructions: bool = false;
 
+const FRAMES_MAX: usize = 256;
+const STACK_MAX: usize = FRAMES_MAX * @as(usize, @intCast((std.math.maxInt(u8) + 1)));
+
 allocator: std.mem.Allocator,
 ip: usize = 0,
 chunk: *Chunk = undefined,
 arena: std.heap.ArenaAllocator,
 sp: u8,
-stack: [256]Value,
 globals: ObjStringHashMap(Value),
+stack: [STACK_MAX]Value,
+frames: [FRAMES_MAX]CallFrame,
+frame_count: usize = 0,
 
 pub const InterpretResult = enum {
     ok,
@@ -27,17 +32,31 @@ pub const InterpretResult = enum {
 
 const Self = @This();
 
+const CallFrame = struct {
+    sp: usize,
+    ip: usize,
+    func: *Obj.Function,
+};
+
 pub fn init(allocator: std.mem.Allocator) Self {
-    var stack = [_]Value{Value.number(0)} ** 256;
     return .{
         .ip = 0,
         .chunk = undefined,
-        .stack = stack,
         .sp = 0,
         .allocator = allocator,
         .globals = ObjStringHashMap(Value).init(allocator),
         .arena = std.heap.ArenaAllocator.init(allocator),
+        .stack = undefined,
+        .frames = undefined,
     };
+}
+
+pub fn frame(self: *Self) *CallFrame {
+    return &self.frames[self.frame_count - 1];
+}
+
+fn currentChunk(self: *Self) *Chunk {
+    return &self.frame().func.chunk;
 }
 
 pub fn deinit(self: *Self) void {
@@ -45,28 +64,24 @@ pub fn deinit(self: *Self) void {
     self.globals.deinit();
 }
 
-fn compileToChunk(self: *Self, source: []const u8) error{ CompileError, OutOfMemory }!void {
+fn compileToChunk(self: *Self, source: []const u8) error{ CompileError, OutOfMemory }!*Obj.Function {
     // TODO: This is not being deinitialized... lifetimes are weird. Fix it.
     var compiler = try Compiler.init(self.arena.allocator(), source, .script);
 
     var func = try compiler.compile();
-    self.chunk = &func.chunk;
     if (debuginstructions) {
         try debug.disassembleChunk(compiler.currentChunk(), "chunk");
     }
-}
-
-pub fn resetChunk(self: *Self, chunk: *Chunk) void {
-    self.chunk = chunk;
-    self.stack = [_]Value{Value.number(0)} ** 256;
-    self.ip = 0;
-    self.sp = 0;
+    return func;
 }
 
 pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
-    self.compileToChunk(source) catch {
+    var main = self.compileToChunk(source) catch {
         return .err;
     };
+    self.push(Value.obj(&main.obj));
+    self.frames[0] = .{ .func = main, .ip = 0, .sp = 0 };
+    self.frame_count += 1;
     return try self.run();
 }
 
@@ -86,13 +101,14 @@ fn dumpStack(self: *Self) void {
 }
 
 pub fn run(self: *Self) !InterpretResult {
-    while (self.ip < self.chunk.code.items.len) {
+    var current_frame = self.frame();
+    while (current_frame.ip < self.currentChunk().code.items.len) {
         var instruction = self.readOp();
-        // _ = try debug.disassembleInstruction(&self.chunk, self.ip);
+        // _ = try debug.disassembleInstruction(self.currentChunk(), current_frame.ip);
         switch (instruction) {
             .print, .ret => std.debug.print("{any}\n", .{self.pop()}),
             .constant => {
-                var constant = self.chunk.getConstant(self.readByte());
+                var constant = self.currentChunk().getConstant(self.readByte());
                 self.push(constant);
             },
             .negate => {
@@ -187,12 +203,12 @@ pub fn run(self: *Self) !InterpretResult {
                 _ = self.pop();
             },
             .define_global => {
-                var global_name = self.chunk.getConstant(self.readByte());
+                var global_name = self.currentChunk().getConstant(self.readByte());
                 var value = self.pop();
                 try self.globals.put(Obj.String.fromObj(global_name.as.obj), value);
             },
             .load_global => {
-                var name_value = self.chunk.getConstant(self.readByte());
+                var name_value = self.currentChunk().getConstant(self.readByte());
                 var name_string = Obj.String.fromObj(name_value.as.obj);
                 if (self.globals.get(name_string)) |value| {
                     self.push(value);
@@ -203,7 +219,7 @@ pub fn run(self: *Self) !InterpretResult {
                 }
             },
             .set_global => {
-                var name_value = self.chunk.getConstant(self.readByte());
+                var name_value = self.currentChunk().getConstant(self.readByte());
                 var name_string = Obj.String.fromObj(name_value.as.obj);
                 if (self.globals.contains(name_string)) {
                     try self.globals.put(name_string, self.peek(0));
@@ -214,27 +230,27 @@ pub fn run(self: *Self) !InterpretResult {
                 }
             },
             .set_local => {
-                var index = self.readByte();
-                self.stack[index] = self.peek(0);
+                var slot = current_frame.sp + self.readByte();
+                self.stack[slot] = self.peek(0);
             },
             .load_local => {
-                var index = self.readByte();
-                var value = self.stack[index];
+                var slot = self.readByte();
+                var value = self.stack[current_frame.sp + slot];
                 self.push(value);
             },
             .jump_if_false => {
                 var jump_offset = self.readWord();
                 if (!valIsTruthy(self.peek(0))) {
-                    self.ip += jump_offset;
+                    current_frame.ip += jump_offset;
                 }
             },
             .jump => {
                 var jump_offset = self.readWord();
-                self.ip += jump_offset;
+                current_frame.ip += jump_offset;
             },
             .loop => {
                 var loop_offset = self.readWord();
-                self.ip -= loop_offset;
+                current_frame.ip -= loop_offset;
             },
         }
     }
@@ -255,8 +271,9 @@ fn readOp(self: *Self) Op {
     return op;
 }
 fn readByte(self: *Self) u8 {
-    var byte = self.chunk.readByte(self.ip);
-    self.ip += 1;
+    var call_frame = self.frame();
+    var byte = self.currentChunk().readByte(call_frame.ip);
+    call_frame.ip += 1;
     return byte;
 }
 
