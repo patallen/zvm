@@ -188,8 +188,13 @@ fn processOperator(self: *Self, min_prec: usize) Error!bool {
 
     if (op_info.prec < min_prec) return false;
 
-    self.p.advance();
+    // TODO: This is super hacky... .l_paren operator (for function call) requires that this not be advanced yet.
+    if (current.tag == .l_paren) {
+        try self.call();
+        return true;
+    }
 
+    self.p.advance();
     switch (current.tag) {
         .kw_or => try self.logicalOr(),
         .kw_and => try self.logicalAnd(),
@@ -321,7 +326,9 @@ fn patchJump(self: *Self, jump_ip: usize) void {
 }
 
 fn statement(self: *Self) Error!void {
-    if (self.match(.kw_if)) {
+    if (self.match(.kw_return)) {
+        try self.returnStatement();
+    } else if (self.match(.kw_if)) {
         try self.ifStatement();
     } else if (self.match(.kw_for)) {
         try self.forStatement();
@@ -529,6 +536,37 @@ fn printStatement(self: *Self) !void {
     try self.emitOp(.print);
 }
 
+fn returnStatement(self: *Self) !void {
+    if (self.check(.semicolon)) {
+        try self.emitOp(.null);
+    } else {
+        try self.computeExpression(0);
+    }
+    self.consume(.semicolon, "Expected semicolon after return statement");
+    try self.emitOp(.ret);
+}
+
+fn argumentList(self: *Self) !u8 {
+    var arg_count: u8 = 0;
+    if (!self.check(.r_paren)) {
+        self.p.advance();
+        try self.computeExpression(0);
+        arg_count += 1;
+        while (self.match(.comma)) {
+            try self.computeExpression(0);
+            arg_count += 1;
+        }
+    }
+    self.consume(.r_paren, "Expected ')' after arguments.");
+    return arg_count;
+}
+
+fn call(self: *Self) !void {
+    var arg_count = try self.argumentList();
+    try self.emitOp(.call);
+    try self.emitByte(arg_count);
+}
+
 fn computeAtom(self: *Self) Error!void {
     var current = self.p.current;
     if (getOpInfo(current) != null) {
@@ -601,6 +639,7 @@ fn getOpInfo(tok: Tokenizer.Token) ?OpInfo {
         .star_star => .{ .prec = 3, .assoc = .right },
         .kw_and => .{ .prec = 0, .assoc = .left },
         .kw_or => .{ .prec = 0, .assoc = .left },
+        .l_paren => .{ .prec = 2, .assoc = .right },
         else => null,
     };
 }

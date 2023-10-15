@@ -10,7 +10,7 @@ const ObjStringHashMap = @import("./hashmap.zig").ObjStringHashMap;
 const concat = @import("./value.zig").concat;
 const copyString = Obj.copyString;
 
-const debuginstructions: bool = true;
+const debuginstructions: bool = false;
 
 const FRAMES_MAX: usize = 256;
 const STACK_MAX: usize = FRAMES_MAX * @as(usize, @intCast((std.math.maxInt(u8) + 1)));
@@ -101,12 +101,10 @@ fn dumpStack(self: *Self) void {
 }
 
 pub fn run(self: *Self) !InterpretResult {
-    var current_frame = self.frame();
-    while (current_frame.ip < self.currentChunk().code.items.len) {
+    while (self.frame().ip < self.currentChunk().code.items.len) {
         var instruction = self.readOp();
-        // _ = try debug.disassembleInstruction(self.currentChunk(), current_frame.ip);
         switch (instruction) {
-            .print, .ret => std.debug.print("{any}\n", .{self.pop()}),
+            .print => std.debug.print("{any}\n", .{self.pop()}),
             .constant => {
                 var constant = self.currentChunk().getConstant(self.readByte());
                 self.push(constant);
@@ -230,27 +228,43 @@ pub fn run(self: *Self) !InterpretResult {
                 }
             },
             .set_local => {
-                var slot = current_frame.sp + self.readByte();
+                var slot = self.frame().sp + self.readByte();
                 self.stack[slot] = self.peek(0);
             },
             .load_local => {
                 var slot = self.readByte();
-                var value = self.stack[current_frame.sp + slot];
+                var value = self.stack[self.frame().sp + slot];
                 self.push(value);
             },
             .jump_if_false => {
                 var jump_offset = self.readWord();
                 if (!valIsTruthy(self.peek(0))) {
-                    current_frame.ip += jump_offset;
+                    self.frame().ip += jump_offset;
                 }
             },
             .jump => {
                 var jump_offset = self.readWord();
-                current_frame.ip += jump_offset;
+                self.frame().ip += jump_offset;
             },
             .loop => {
                 var loop_offset = self.readWord();
-                current_frame.ip -= loop_offset;
+                self.frame().ip -= loop_offset;
+            },
+            .call => {
+                var count = self.readByte();
+                var func = self.peek(count);
+                self.frames[self.frame_count] = CallFrame{
+                    .func = Obj.Function.fromObj(func.as.obj),
+                    .ip = 0,
+                    .sp = self.sp - count - 1,
+                };
+                self.frame_count += 1;
+            },
+            .ret => {
+                self.frame_count -= 1;
+                var retval = self.pop();
+                self.sp = @intCast(self.frames[self.frame_count].sp);
+                self.push(retval);
             },
         }
     }
