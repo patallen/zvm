@@ -23,6 +23,7 @@ const Self = @This();
 pub const Token = struct {
     tag: Tag,
     loc: Loc,
+    slice: []const u8 = undefined,
 
     pub const Loc = struct {
         start: usize,
@@ -32,6 +33,7 @@ pub const Token = struct {
 
     pub const Tag = enum {
         // single
+        comma,
         l_brace,
         r_brace,
         l_paren,
@@ -96,6 +98,7 @@ pub const Token = struct {
             .r_paren => ")",
             .l_brace => "{",
             .r_brace => "}",
+            .comma => ",",
             .plus => "+",
             .minus => "-",
             .star => "*",
@@ -229,6 +232,11 @@ pub fn scanToken(self: *Self) Token {
                     self.index += 1;
                     break;
                 },
+                ',' => {
+                    token.tag = .comma;
+                    self.index += 1;
+                    break;
+                },
                 else => {
                     if (self.isAlpha(c)) {
                         state = .ident;
@@ -339,6 +347,7 @@ pub fn scanToken(self: *Self) Token {
         }
     }
     token.loc.end = self.index;
+    token.slice = self.buffer[token.loc.start..token.loc.end];
     self.prev = self.curr;
     self.curr = token;
     return token;

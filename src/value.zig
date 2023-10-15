@@ -68,7 +68,7 @@ pub const Value = struct {
             },
             .obj => switch (self.as.obj.ty) {
                 .string => try writer.print("{s}", .{Obj.String.fromObj(self.as.obj).bytes}),
-                .function => try writer.print("{any}()", .{Obj.Function.fromObj(self.as.obj).name}),
+                .function => try writer.print("fn<{s}>", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
             },
         };
     }

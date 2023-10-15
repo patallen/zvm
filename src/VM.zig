@@ -10,7 +10,7 @@ const ObjStringHashMap = @import("./hashmap.zig").ObjStringHashMap;
 const concat = @import("./value.zig").concat;
 const copyString = Obj.copyString;
 
-const debuginstructions: bool = false;
+const debuginstructions: bool = true;
 
 const FRAMES_MAX: usize = 256;
 const STACK_MAX: usize = FRAMES_MAX * @as(usize, @intCast((std.math.maxInt(u8) + 1)));

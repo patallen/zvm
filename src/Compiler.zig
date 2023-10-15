@@ -34,6 +34,7 @@ pub const FunctionType = enum {
 };
 
 pub const CompileContext = struct {
+    hint: []const u8 = "",
     func: *Obj.Function,
     func_type: FunctionType,
     enclosing: ?*CompileContext,
@@ -41,8 +42,9 @@ pub const CompileContext = struct {
     local_count: u8 = 0,
     scope_depth: u8 = 0,
 
-    pub fn init(func: *Obj.Function, func_type: FunctionType, enclosing: ?*CompileContext) CompileContext {
+    pub fn init(func: *Obj.Function, func_type: FunctionType, enclosing: ?*CompileContext, hint: []const u8) CompileContext {
         return .{
+            .hint = hint,
             .func = func,
             .func_type = func_type,
             .enclosing = enclosing,
@@ -51,7 +53,7 @@ pub const CompileContext = struct {
 };
 
 allocator: Allocator,
-ctx: CompileContext,
+ctx: *CompileContext,
 source: []const u8,
 p: Parse,
 
@@ -63,18 +65,15 @@ fn createFunction(allocator: std.mem.Allocator, name: []const u8) !*Obj.Function
     return func;
 }
 
-pub fn init(allocator: Allocator, source: []const u8) !Self {
-    var func = try createFunction(allocator, "<script>");
-    var ctx = CompileContext{
-        .func = func,
-        .func_type = .script,
-        .enclosing = null,
-        .local_count = 1,
-    };
-    ctx.locals[0] = .{ .name = "fake", .depth = 0 };
+fn initContext(ctx: *CompileContext, hint: []const u8) void {
+    ctx.hint = hint;
+    ctx.locals[0] = .{ .name = "", .depth = 0 };
+    ctx.local_count = 1;
+}
 
+pub fn init(allocator: Allocator, source: []const u8) !Self {
     return .{
-        .ctx = ctx,
+        .ctx = undefined,
         .allocator = allocator,
         .p = Parse.init(source),
         .source = source,
@@ -82,14 +81,18 @@ pub fn init(allocator: Allocator, source: []const u8) !Self {
 }
 
 pub fn deinit(self: *Self) void {
-    _ = self;
     // TODO: Took a while to debug this msising "func name" free.
     // There has got to be a better way of managing this.
-    // self.func.name.obj.deinit(self.allocator);
-    // self.func.obj.deinit(self.allocator);
+    self.ctx.func.name.obj.deinit(self.allocator);
+    self.ctx.func.obj.deinit(self.allocator);
 }
 
-pub fn compile(self: *Self) error{CompileError}!*Obj.Function {
+pub fn compile(self: *Self) error{ CompileError, OutOfMemory }!*Obj.Function {
+    var func = try createFunction(self.allocator, "");
+    var context = CompileContext.init(func, .script, null, "base");
+    initContext(&context, "base");
+    self.ctx = &context;
+
     self.p.advance();
     while (!self.match(.eof)) {
         self.declaration() catch {
@@ -144,15 +147,12 @@ fn emitConstant(self: *Self, value: Value) !void {
 // Constant Creation
 fn string(self: *Self) !void {
     var tok = self.p.previous;
-    const bytes = self.source[tok.loc.start + 1 .. tok.loc.end - 1];
-    var string_obj = try copyString(self.allocator, bytes);
+    var string_obj = try copyString(self.allocator, tok.slice[1 .. tok.slice.len - 1]);
     try self.emitConstant(Value.obj(&string_obj.obj));
 }
 
 fn number(self: *Self) !void {
-    var loc = self.p.previous.loc;
-    var strval = self.source[loc.start..loc.end];
-    var fvalue = try std.fmt.parseFloat(f64, strval);
+    var fvalue = try std.fmt.parseFloat(f64, self.p.previous.slice);
     try self.emitConstant(Value.number(fvalue));
 }
 
@@ -342,8 +342,7 @@ fn resolveLocal(self: *Self, tok: *Tokenizer.Token) ?u8 {
     var i = self.ctx.local_count;
     while (i > 0) : (i -= 1) {
         var local = self.ctx.locals[i - 1];
-        var name = self.source[tok.loc.start..tok.loc.end];
-        if (identifiersEqual(local.name, name)) {
+        if (identifiersEqual(local.name, tok.slice)) {
             if (local.depth == null) {
                 self.p.errorAt(tok, "variable not fully initialized");
             }
@@ -440,7 +439,8 @@ fn declareVariable(self: *Self) !void {
             break;
         }
         var loc = self.p.previous.loc;
-        if (identifiersEqual(local.name, self.source[loc.start..loc.end])) {
+        _ = loc;
+        if (identifiersEqual(local.name, self.p.previous.slice)) {
             std.debug.print("TODO: This should be made an error: Local already exists by that name.", .{});
             return;
         }
@@ -449,7 +449,7 @@ fn declareVariable(self: *Self) !void {
 }
 
 fn identifierConstant(self: *Self, tok: *Tokenizer.Token) !u8 {
-    var string_obj = try copyString(self.allocator, self.source[tok.loc.start..tok.loc.end]);
+    var string_obj = try copyString(self.allocator, tok.slice);
     return self.currentChunk().addConstant(Value.obj(&string_obj.obj));
 }
 
@@ -469,21 +469,34 @@ fn functionDeclaration(self: *Self) !void {
 }
 
 fn function(self: *Self, func_type: FunctionType) !void {
-    var loc = self.p.current.loc;
-    var func = try createFunction(self.allocator, self.source[loc.start..loc.end]);
-    var ctx = .{
+    var func = try createFunction(self.allocator, self.p.previous.slice);
+    var ctx = CompileContext{
         .func = func,
         .func_type = func_type,
-        .enclosing = &self.ctx,
+        .enclosing = undefined,
     };
-    self.ctx = ctx;
+    initContext(&ctx, "FUNC");
+    ctx.enclosing = self.ctx;
+    self.ctx = &ctx;
+    self.beginScope();
 
     self.consume(.l_paren, "Expected open paren following function decl");
+    if (!self.check(.r_paren)) {
+        self.ctx.func.arity += 1;
+        var constant = try self.parseVariable("Expected parameter name.");
+        try self.defineVariable(constant);
+        while (self.match(.comma)) {
+            self.ctx.func.arity += 1;
+            constant = try self.parseVariable("Expected parameter name.");
+            try self.defineVariable(constant);
+        }
+    }
+
     self.consume(.r_paren, "Expected closing paren after function params");
     self.consume(.l_brace, "Expected '{' for after function decl;");
-    try self.computeExpression(0);
-    self.consume(.semicolon, "Expected ';' following variable declaration.");
-    self.ctx = self.ctx.enclosing.?.*;
+    try self.parseBlock();
+    self.ctx = self.ctx.enclosing.?;
+    try self.emitConstant(Value.obj(&func.obj));
 }
 
 fn defineVariable(self: *Self, index: u8) !void {
@@ -500,8 +513,7 @@ fn addLocal(self: *Self, tok: Tokenizer.Token) !void {
         std.debug.print("Too many locals... this should be made an error\n", .{});
         return;
     }
-    var name = self.source[tok.loc.start..tok.loc.end];
-    self.ctx.locals[@intCast(self.ctx.local_count)] = .{ .depth = null, .name = name };
+    self.ctx.locals[@intCast(self.ctx.local_count)] = .{ .depth = null, .name = tok.slice };
     self.ctx.local_count += 1;
 }
 
@@ -541,7 +553,7 @@ fn computeAtom(self: *Self) Error!void {
         else => {
             std.debug.print("reached 'unreachable' atom token:{any}: '{s}'\n", .{
                 current.tag,
-                self.source[current.loc.start..current.loc.end],
+                current.slice,
             });
             unreachable;
         },
@@ -572,6 +584,7 @@ fn namedVariable(self: *Self) !void {
 }
 
 fn markLocalInitialized(self: *Self) void {
+    if (self.ctx.scope_depth == 0) return;
     self.ctx.locals[@intCast(self.ctx.local_count - 1)].depth = self.ctx.scope_depth;
 }
 
