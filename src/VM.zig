@@ -80,8 +80,7 @@ pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
         return .err;
     };
     self.push(Value.obj(&main.obj));
-    self.frames[0] = .{ .func = main, .ip = 0, .sp = 0 };
-    self.frame_count += 1;
+    _ = self.call(main, 0);
     return try self.run();
 }
 
@@ -252,13 +251,10 @@ pub fn run(self: *Self) !InterpretResult {
             },
             .call => {
                 var count = self.readByte();
-                var func = self.peek(count);
-                self.frames[self.frame_count] = CallFrame{
-                    .func = Obj.Function.fromObj(func.as.obj),
-                    .ip = 0,
-                    .sp = self.sp - count - 1,
-                };
-                self.frame_count += 1;
+                var func_value = self.peek(count);
+                if (!self.callValue(func_value, count)) {
+                    return InterpretResult.err;
+                }
             },
             .ret => {
                 self.frame_count -= 1;
@@ -269,6 +265,40 @@ pub fn run(self: *Self) !InterpretResult {
         }
     }
     return .ok;
+}
+
+fn call(self: *Self, func: *Obj.Function, arg_count: u8) bool {
+    if (arg_count != func.arity) {
+        self.runtimeError("Wrong number of arguments provided.");
+        return false;
+    }
+
+    self.frames[self.frame_count] = CallFrame{
+        .func = func,
+        .ip = 0,
+        .sp = self.sp - arg_count - 1,
+    };
+    self.frame_count += 1;
+    return true;
+}
+
+fn callValue(self: *Self, callee: Value, arg_count: u8) bool {
+    if (callee.isType(.obj)) {
+        switch (callee.as.obj.ty) {
+            .function => {
+                var func = Obj.Function.fromObj(callee.as.obj);
+                return self.call(func, arg_count);
+            },
+            else => {},
+        }
+    }
+    self.runtimeError("Can only call functions and classes.");
+    return false;
+}
+
+fn runtimeError(self: *Self, message: []const u8) void {
+    _ = self;
+    std.debug.print("RUNTIME: {s}\n", .{message});
 }
 
 fn valIsTruthy(val: Value) bool {
