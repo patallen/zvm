@@ -297,8 +297,19 @@ fn callValue(self: *Self, callee: Value, arg_count: u8) bool {
 }
 
 fn runtimeError(self: *Self, message: []const u8) void {
-    _ = self;
-    std.debug.print("RUNTIME: {s}\n", .{message});
+    std.debug.print("Traceback: \n", .{});
+    for (self.frames, 0..) |fr, frame_no| {
+        if (frame_no >= self.frame_count) {
+            break;
+        }
+        std.debug.print("[line {d}] in ", .{fr.func.chunk.lines.items[fr.ip]});
+        if (fr.func.name.bytes.len == 0) {
+            std.debug.print("<script>\n", .{});
+        } else {
+            std.debug.print("{s}()\n", .{fr.func.name.bytes});
+        }
+    }
+    std.debug.print("ERROR: {s}\n", .{message});
 }
 
 fn valIsTruthy(val: Value) bool {
