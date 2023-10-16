@@ -273,25 +273,17 @@ fn ifStatement(self: *Self) Error!void {
     try self.computeExpression(0);
     self.consume(.r_paren, "Expected closing paren.");
 
-    // Emit jump for false condition
     var then_jump = try self.emitJump(.jump_if_false);
-
-    // Pop the condition if it was true
     try self.emitOp(.pop);
 
-    // True block
     try self.statement();
 
-    // Emit jump to skip else block
     var else_jump = try self.emitJump(.jump);
 
-    // Patch the jump for false condition
     self.patchJump(then_jump);
+    try self.emitOp(.pop);
 
-    // Else block
     if (self.match(.kw_else)) try self.statement();
-
-    // Patch the jump to skip else block
     self.patchJump(else_jump);
 }
 

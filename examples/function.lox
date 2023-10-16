@@ -1,11 +1,8 @@
-fn fab() {
-    return 0;
-}
 fn fib(a) {
     if (a < 2) {
-        return fab(a);
+        return  a;
     }
-    return fib( a - 1);
+    return fib(a - 2) + fib(a - 1);
 }
 
-print fib(4);
+print fib(25);

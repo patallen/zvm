@@ -15,15 +15,55 @@ const debuginstructions: bool = false;
 const FRAMES_MAX: usize = 256;
 const STACK_MAX: usize = FRAMES_MAX * @as(usize, @intCast((std.math.maxInt(u8) + 1)));
 
+const CallStack = struct {
+    items: [FRAMES_MAX]CallFrame = undefined,
+    ptr: *CallFrame = undefined,
+    count: usize = 0,
+};
+
+const Stack = struct {
+    items: [STACK_MAX]Value = undefined,
+    ptr: [*]Value = undefined,
+
+    pub fn init(self: *Stack) void {
+        self.ptr = &self.items;
+    }
+
+    pub fn push(self: *Stack, value: Value) void {
+        self.ptr[0] = value;
+        self.ptr += 1;
+    }
+
+    pub fn pop(self: *Stack) Value {
+        self.ptr -= 1;
+        return self.ptr[0];
+    }
+
+    pub fn peek(self: *Stack, dist: usize) Value {
+        return (self.ptr - dist - 1)[0];
+    }
+
+    pub fn dump(self: *Stack) void {
+        std.debug.print(" [", .{});
+        for (&self.items) |ptr| {
+            if (ptr == self.ptr) {
+                break;
+            }
+            std.debug.print("{any}", .{ptr.*});
+            if (ptr != self.ptr - 1) {
+                std.debug.print(" | ", .{});
+            }
+        }
+        std.debug.print("]\n", .{});
+    }
+};
+
 allocator: std.mem.Allocator,
-ip: usize = 0,
 chunk: *Chunk = undefined,
 arena: std.heap.ArenaAllocator,
-sp: u8,
 globals: ObjStringHashMap(Value),
-stack: [STACK_MAX]Value,
-frames: [FRAMES_MAX]CallFrame,
-frame_count: usize = 0,
+stack: Stack,
+frames: CallStack,
 
 pub const InterpretResult = enum {
     ok,
@@ -33,30 +73,25 @@ pub const InterpretResult = enum {
 const Self = @This();
 
 const CallFrame = struct {
-    sp: usize,
+    slots: [*]Value,
     ip: usize,
     func: *Obj.Function,
 };
 
 pub fn init(allocator: std.mem.Allocator) Self {
-    return .{
-        .ip = 0,
+    var vm = Self{
         .chunk = undefined,
-        .sp = 0,
         .allocator = allocator,
         .globals = ObjStringHashMap(Value).init(allocator),
         .arena = std.heap.ArenaAllocator.init(allocator),
-        .stack = undefined,
-        .frames = undefined,
+        .stack = .{},
+        .frames = .{},
     };
-}
-
-pub fn frame(self: *Self) *CallFrame {
-    return &self.frames[self.frame_count - 1];
+    return vm;
 }
 
 fn currentChunk(self: *Self) *Chunk {
-    return &self.frame().func.chunk;
+    return &self.frames.ptr.func.chunk;
 }
 
 pub fn deinit(self: *Self) void {
@@ -76,89 +111,81 @@ fn compileToChunk(self: *Self, source: []const u8) error{ CompileError, OutOfMem
 }
 
 pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
+    self.stack.init();
     var main = self.compileToChunk(source) catch {
         return .err;
     };
-    self.push(Value.obj(&main.obj));
+    self.stack.push(Value.obj(&main.obj));
     _ = self.call(main, 0);
     return try self.run();
 }
 
-fn peek(self: *Self, distance: u8) Value {
-    return self.stack[self.sp - distance - 1];
-}
-
-fn dumpStack(self: *Self) void {
-    std.debug.print(" [", .{});
-    for (0..self.sp) |i| {
-        std.debug.print("{any}", .{self.stack[i]});
-        if (i != self.sp - 1) {
-            std.debug.print(" | ", .{});
-        }
-    }
-    std.debug.print("]\n", .{});
-}
-
 pub fn run(self: *Self) !InterpretResult {
-    while (self.frame().ip < self.currentChunk().code.items.len) {
+    while (self.frames.ptr.ip < self.currentChunk().code.items.len) {
         var instruction = self.readOp();
         switch (instruction) {
-            .print => std.debug.print("{any}\n", .{self.pop()}),
+            .print => std.debug.print("{any}\n", .{self.stack.pop()}),
             .constant => {
                 var constant = self.currentChunk().getConstant(self.readByte());
-                self.push(constant);
+                self.stack.push(constant);
             },
             .negate => {
-                self.push(Value.number(-self.pop().as.number));
+                self.stack.push(Value.number(-self.stack.pop().as.number));
             },
             .add => {
-                var b = self.pop();
-                var a = self.pop();
+                var b = self.stack.pop();
+                var a = self.stack.pop();
                 if (a.ty != b.ty) {
-                    std.debug.print("Can only add elements of the same type.\n", .{});
+                    self.runtimeError("Cannot add '{any}' to '{any}'\n", .{ a, b });
+                    return .err;
                 }
                 switch (a.ty) {
-                    .number => self.push(Value.number(a.as.number + b.as.number)),
+                    .number => self.stack.push(Value.number(a.as.number + b.as.number)),
                     .null => {
-                        std.debug.print("can't add nulls together.\n", .{});
+                        self.runtimeError("Cannot add 'null' to 'null'\n", .{});
+                        return .err;
                     },
                     .obj => switch (a.as.obj.ty) {
                         .string => {
                             var value = try concat(self.arena.allocator(), a, b);
-                            self.push(value);
+                            self.stack.push(value);
                         },
                         .function => {
-                            std.debug.print("add operation not supported for functions\n", .{});
+                            self.runtimeError("Cannot add '{any}' to '{any}'\n", .{ a, b });
+                            return .err;
                         },
                     },
-                    .bool => std.debug.print("can't add two bools together.\n", .{}),
+                    .bool => {
+                        self.runtimeError("Cannot add '{any}' to '{any}'\n", .{ a, b });
+                        return .err;
+                    },
                 }
             },
             .subtract => {
-                const operand = self.pop().as.number;
-                self.push(Value.number(self.pop().as.number - operand));
+                const operand = self.stack.pop().as.number;
+                self.stack.push(Value.number(self.stack.pop().as.number - operand));
             },
             .divide => {
-                const operand = self.pop().as.number;
-                self.push(Value.number(self.pop().as.number / operand));
+                const operand = self.stack.pop().as.number;
+                self.stack.push(Value.number(self.stack.pop().as.number / operand));
             },
             .multiply => {
-                const operand = self.pop().as.number;
-                self.push(Value.number(self.pop().as.number * operand));
+                const operand = self.stack.pop().as.number;
+                self.stack.push(Value.number(self.stack.pop().as.number * operand));
             },
             .pow => {
-                var operand = self.pop().as.number;
-                var operator = self.pop().as.number;
-                self.push(Value.number(std.math.pow(f64, operator, operand)));
+                var operand = self.stack.pop().as.number;
+                var operator = self.stack.pop().as.number;
+                self.stack.push(Value.number(std.math.pow(f64, operator, operand)));
             },
             .equals => {
                 // TODO: We need Value unions
-                var b = self.pop();
-                var a = self.pop();
+                var b = self.stack.pop();
+                var a = self.stack.pop();
                 if (a.ty != b.ty) {
                     std.debug.print("CANNOT COMPARE VALUES OF DIFFERENT TYPE\n", .{});
                 } else {
-                    self.push(switch (a.ty) {
+                    self.stack.push(switch (a.ty) {
                         .bool => Value.boolean(a.as.bool == b.as.bool),
                         .number => Value.boolean(a.as.number == b.as.number),
                         .null => Value.boolean(true),
@@ -167,51 +194,53 @@ pub fn run(self: *Self) !InterpretResult {
                 }
             },
             .greater => {
-                var b = self.pop();
-                var a = self.pop();
+                var b = self.stack.pop();
+                var a = self.stack.pop();
                 if (a.ty != .number or b.ty != .number) {
-                    std.debug.print("Can only test '>' on two numbers.\n", .{});
+                    self.runtimeError("Cannot test {any} > {any}. Both operants must be numbers.\n", .{ a, b });
+                    return .err;
                 } else {
-                    self.push(Value.boolean(a.as.number > b.as.number));
+                    self.stack.push(Value.boolean(a.as.number > b.as.number));
                 }
             },
             .less => {
-                var b = self.pop();
-                var a = self.pop();
+                var b = self.stack.pop();
+                var a = self.stack.pop();
                 if (a.ty != .number or b.ty != .number) {
-                    std.debug.print("Can only test '<' on two numbers.", .{});
+                    self.runtimeError("Cannot test {any} < {any}. Both operants must be numbers.\n", .{ a, b });
+                    return .err;
                 } else {
-                    self.push(Value.boolean(a.as.number < b.as.number));
+                    self.stack.push(Value.boolean(a.as.number < b.as.number));
                 }
             },
             .false => {
-                self.push(Value.boolean(false));
+                self.stack.push(Value.boolean(false));
             },
             .true => {
-                self.push(Value.boolean(true));
+                self.stack.push(Value.boolean(true));
             },
             .null => {
-                self.push(Value.null());
+                self.stack.push(Value.null());
             },
             .not => {
-                self.push(Value.boolean(!valIsTruthy(self.pop())));
+                self.stack.push(Value.boolean(!valIsTruthy(self.stack.pop())));
             },
             .pop => {
-                _ = self.pop();
+                _ = self.stack.pop();
             },
             .define_global => {
                 var global_name = self.currentChunk().getConstant(self.readByte());
-                var value = self.pop();
+                var value = self.stack.pop();
                 try self.globals.put(Obj.String.fromObj(global_name.as.obj), value);
             },
             .load_global => {
                 var name_value = self.currentChunk().getConstant(self.readByte());
                 var name_string = Obj.String.fromObj(name_value.as.obj);
                 if (self.globals.get(name_string)) |value| {
-                    self.push(value);
+                    self.stack.push(value);
                 } else {
                     // runtime error
-                    std.debug.print("Undefined variable: '{s}'\n", .{name_string.bytes});
+                    self.runtimeError("Undefined variable: {s}\n", .{name_string.bytes});
                     return .err;
                 }
             },
@@ -219,48 +248,48 @@ pub fn run(self: *Self) !InterpretResult {
                 var name_value = self.currentChunk().getConstant(self.readByte());
                 var name_string = Obj.String.fromObj(name_value.as.obj);
                 if (self.globals.contains(name_string)) {
-                    try self.globals.put(name_string, self.peek(0));
+                    try self.globals.put(name_string, self.stack.peek(0));
                 } else {
-                    // runtime error
-                    std.debug.print("Cannot assign to undefined name: '{s}'\n", .{name_string.bytes});
+                    self.runtimeError("Cannot assign to undefined name: '{s}'\n", .{name_string.bytes});
                     return .err;
                 }
             },
             .set_local => {
-                var slot = self.frame().sp + self.readByte();
-                self.stack[slot] = self.peek(0);
+                var slot = self.readByte();
+                self.frames.ptr.slots[slot] = self.stack.peek(0);
             },
             .load_local => {
                 var slot = self.readByte();
-                var value = self.stack[self.frame().sp + slot];
-                self.push(value);
+                var value = self.frames.ptr.slots[slot];
+                self.stack.push(value);
             },
             .jump_if_false => {
                 var jump_offset = self.readWord();
-                if (!valIsTruthy(self.peek(0))) {
-                    self.frame().ip += jump_offset;
+                if (!valIsTruthy(self.stack.peek(0))) {
+                    self.frames.ptr.ip += jump_offset;
                 }
             },
             .jump => {
                 var jump_offset = self.readWord();
-                self.frame().ip += jump_offset;
+                self.frames.ptr.ip += jump_offset;
             },
             .loop => {
                 var loop_offset = self.readWord();
-                self.frame().ip -= loop_offset;
+                self.frames.ptr.ip -= loop_offset;
             },
             .call => {
                 var count = self.readByte();
-                var func_value = self.peek(count);
+                var func_value = self.stack.peek(count);
                 if (!self.callValue(func_value, count)) {
                     return InterpretResult.err;
                 }
             },
             .ret => {
-                self.frame_count -= 1;
-                var retval = self.pop();
-                self.sp = @intCast(self.frames[self.frame_count].sp);
-                self.push(retval);
+                var retval = self.stack.pop();
+                self.stack.ptr = self.frames.ptr.slots;
+                self.frames.count -= 1;
+                self.frames.ptr = &self.frames.items[self.frames.count - 1];
+                self.stack.push(retval);
             },
         }
     }
@@ -269,16 +298,13 @@ pub fn run(self: *Self) !InterpretResult {
 
 fn call(self: *Self, func: *Obj.Function, arg_count: u8) bool {
     if (arg_count != func.arity) {
-        self.runtimeError("Wrong number of arguments provided.");
+        self.runtimeError("Wrong number of arguments provided.", .{});
         return false;
     }
 
-    self.frames[self.frame_count] = CallFrame{
-        .func = func,
-        .ip = 0,
-        .sp = self.sp - arg_count - 1,
-    };
-    self.frame_count += 1;
+    self.frames.items[self.frames.count] = CallFrame{ .func = func, .ip = 0, .slots = self.stack.ptr - arg_count - 1 };
+    self.frames.ptr = &self.frames.items[self.frames.count];
+    self.frames.count += 1;
     return true;
 }
 
@@ -292,14 +318,14 @@ fn callValue(self: *Self, callee: Value, arg_count: u8) bool {
             else => {},
         }
     }
-    self.runtimeError("Can only call functions and classes.");
+    self.runtimeError("Can only call functions and classes.", .{});
     return false;
 }
 
-fn runtimeError(self: *Self, message: []const u8) void {
+fn runtimeError(self: *Self, comptime message: []const u8, args: anytype) void {
     std.debug.print("Traceback: \n", .{});
-    for (self.frames, 0..) |fr, frame_no| {
-        if (frame_no >= self.frame_count) {
+    for (self.frames.items, 0..) |fr, frame_no| {
+        if (frame_no >= self.frames.count) {
             break;
         }
         std.debug.print("[line {d}] in ", .{fr.func.chunk.lines.items[fr.ip]});
@@ -309,7 +335,7 @@ fn runtimeError(self: *Self, message: []const u8) void {
             std.debug.print("{s}()\n", .{fr.func.name.bytes});
         }
     }
-    std.debug.print("ERROR: {s}\n", .{message});
+    std.debug.print("ERROR: " ++ message, args);
 }
 
 fn valIsTruthy(val: Value) bool {
@@ -326,7 +352,7 @@ fn readOp(self: *Self) Op {
     return op;
 }
 fn readByte(self: *Self) u8 {
-    var call_frame = self.frame();
+    var call_frame = self.frames.ptr;
     var byte = self.currentChunk().readByte(call_frame.ip);
     call_frame.ip += 1;
     return byte;
@@ -336,17 +362,6 @@ fn readWord(self: *Self) u16 {
     var lhs: u16 = @intCast(self.readByte());
     var rhs: u16 = @intCast(self.readByte());
     return lhs << 8 | rhs;
-}
-
-fn push(self: *Self, value: Value) void {
-    self.stack[self.sp] = value;
-    self.sp += 1;
-}
-
-fn pop(self: *Self) Value {
-    self.sp -= 1;
-    var value = self.stack[self.sp];
-    return value;
 }
 
 test "vm" {

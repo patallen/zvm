@@ -8,10 +8,6 @@ fn repl(allocator: std.mem.Allocator, stdin: anytype, stdout: anytype) !void {
         var vm = VM.init(allocator);
         var input = try stdin.readUntilDelimiterAlloc(allocator, '\n', 512);
         _ = try vm.interpret(input[0..]);
-        // Print the top value of the stack... allows the user to not have to print everything in the repl
-        if (vm.sp > 0) {
-            try stdout.print("{any}\n", .{vm.stack[vm.sp - 1]});
-        }
     }
 }
 
