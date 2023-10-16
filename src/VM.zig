@@ -298,7 +298,7 @@ pub fn run(self: *Self) !InterpretResult {
 
 fn call(self: *Self, func: *Obj.Function, arg_count: u8) bool {
     if (arg_count != func.arity) {
-        self.runtimeError("Wrong number of arguments provided.", .{});
+        self.runtimeError("Wrong number of arguments provided.\n", .{});
         return false;
     }
 
@@ -318,7 +318,7 @@ fn callValue(self: *Self, callee: Value, arg_count: u8) bool {
             else => {},
         }
     }
-    self.runtimeError("Can only call functions and classes.", .{});
+    self.runtimeError("Can only call functions and classes.\n", .{});
     return false;
 }
 
