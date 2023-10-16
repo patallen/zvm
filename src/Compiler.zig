@@ -410,6 +410,7 @@ fn forStatement(self: *Self) !void {
     // increment
     var incr_start = self.currentChunk().code.items.len - 1;
     try self.computeExpression(0);
+    try self.emitOp(.pop);
     self.consume(.r_paren, "Expected closing paren after for statement.");
     try self.emitLoop(loop_start);
 
