@@ -45,8 +45,13 @@ pub const Value = struct {
     }
 
     pub fn asFunctionObj(self: *const Value) *Obj.Function {
-        assert(self.isObjType(.obj, .string));
+        assert(self.isObjType(.obj, .function));
         return @fieldParentPtr(Obj.Function, "obj", self.asObj());
+    }
+
+    pub fn asNativeObj(self: *const Value) *Obj.Native {
+        assert(self.isObjType(.obj, .native));
+        return @fieldParentPtr(Obj.Native, "obj", self.asObj());
     }
 
     pub fn asRawString(self: *const Value) []const u8 {
@@ -68,7 +73,8 @@ pub const Value = struct {
             },
             .obj => switch (self.as.obj.ty) {
                 .string => try writer.print("{s}", .{Obj.String.fromObj(self.as.obj).bytes}),
-                .function => try writer.print("fn<{s}>", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
+                .function => try writer.print("function<{s}>", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
+                .native => try writer.print("native<{s}>", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
             },
         };
     }

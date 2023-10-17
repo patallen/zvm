@@ -541,8 +541,8 @@ fn returnStatement(self: *Self) !void {
 
 fn argumentList(self: *Self) !u8 {
     var arg_count: u8 = 0;
+    self.p.advance();
     if (!self.check(.r_paren)) {
-        self.p.advance();
         try self.computeExpression(0);
         arg_count += 1;
         while (self.match(.comma)) {

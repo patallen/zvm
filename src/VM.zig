@@ -112,6 +112,7 @@ fn compileToChunk(self: *Self, source: []const u8) error{ CompileError, OutOfMem
 
 pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
     self.stack.init();
+    try defineNative(self, "clock", clockNative);
     var main = self.compileToChunk(source) catch {
         return .err;
     };
@@ -150,7 +151,7 @@ pub fn run(self: *Self) !InterpretResult {
                             var value = try concat(self.arena.allocator(), a, b);
                             self.stack.push(value);
                         },
-                        .function => {
+                        .native, .function => {
                             self.runtimeError("Cannot add '{any}' to '{any}'\n", .{ a, b });
                             return .err;
                         },
@@ -304,16 +305,42 @@ fn call(self: *Self, func: *Obj.Function, arg_count: u8) bool {
 
     self.frames.items[self.frames.count] = CallFrame{ .func = func, .ip = 0, .slots = self.stack.ptr - arg_count - 1 };
     self.frames.ptr = &self.frames.items[self.frames.count];
+    self.ip = 0;
     self.frames.count += 1;
     return true;
+}
+
+fn defineNative(self: *Self, name: []const u8, function: Obj.NativeFn) !void {
+    var name_str = try copyString(self.allocator, name);
+    self.stack.push(Value.obj(&name_str.obj));
+    var native = try Obj.Native.init(self.allocator, function);
+    self.stack.push(Value.obj(&native.obj));
+    try self.globals.put(self.stack.items[0].asStringObj(), self.stack.items[1]);
+    // push onto the stack and immediately pop (for GC reasons)
+    _ = self.stack.pop();
+    _ = self.stack.pop();
+}
+
+fn clockNative(arg_count: usize, args: []Value) Value {
+    _ = args;
+    _ = arg_count;
+    var ts = std.time.milliTimestamp();
+    return Value.number(@floatFromInt(ts));
 }
 
 fn callValue(self: *Self, callee: Value, arg_count: u8) bool {
     if (callee.isType(.obj)) {
         switch (callee.as.obj.ty) {
             .function => {
-                var func = Obj.Function.fromObj(callee.as.obj);
-                return self.call(func, arg_count);
+                var function = callee.asFunctionObj();
+                return self.call(function, arg_count);
+            },
+            .native => {
+                var native = callee.asNativeObj().func;
+                var result = native(arg_count, self.stack.ptr[0..arg_count]);
+                self.stack.ptr -= arg_count + 1;
+                self.stack.push(result);
+                return true;
             },
             else => {},
         }
@@ -348,9 +375,9 @@ fn valIsTruthy(val: Value) bool {
 }
 
 fn readOp(self: *Self) Op {
-    var op: Op = @enumFromInt(self.readByte());
-    return op;
+    return @enumFromInt(self.readByte());
 }
+
 fn readByte(self: *Self) u8 {
     var call_frame = self.frames.ptr;
     var byte = self.currentChunk().readByte(call_frame.ip);

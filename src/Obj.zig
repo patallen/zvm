@@ -6,7 +6,7 @@ ty: Type,
 
 const Self = @This();
 
-pub const Type = enum { string, function };
+pub const Type = enum { string, function, native };
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     switch (self.ty) {
@@ -18,6 +18,10 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         .string => {
             const typeobj = String.fromObj(self);
             allocator.free(typeobj.bytes);
+            allocator.destroy(typeobj);
+        },
+        .native => {
+            const typeobj = Native.fromObj(self);
             allocator.destroy(typeobj);
         },
     }
@@ -44,14 +48,33 @@ pub const Function = struct {
     }
 
     pub fn init(allocator: std.mem.Allocator) !*Function {
-        var func = try allocator.create(Function);
-        func.* = .{
+        var self = try allocator.create(Function);
+        self.* = .{
             .obj = .{ .ty = .function },
             .arity = 0,
             .chunk = Chunk.init(allocator),
             .name = undefined,
         };
-        return func;
+        return self;
+    }
+};
+
+pub const NativeFn = *const fn (arg_count: usize, args: []Value) Value;
+pub const Native = struct {
+    obj: Self,
+    func: NativeFn,
+
+    pub fn fromObj(obj: *Self) *Native {
+        return @fieldParentPtr(Native, "obj", obj);
+    }
+
+    pub fn init(allocator: std.mem.Allocator, func: NativeFn) !*Native {
+        var self = try allocator.create(Native);
+        self.* = .{
+            .obj = .{ .ty = .native },
+            .func = func,
+        };
+        return self;
     }
 };
 
