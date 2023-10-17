@@ -64,6 +64,7 @@ arena: std.heap.ArenaAllocator,
 globals: ObjStringHashMap(Value),
 stack: Stack,
 frames: CallStack,
+ip: usize,
 
 pub const InterpretResult = enum {
     ok,
@@ -80,6 +81,7 @@ const CallFrame = struct {
 
 pub fn init(allocator: std.mem.Allocator) Self {
     var vm = Self{
+        .ip = 0,
         .chunk = undefined,
         .allocator = allocator,
         .globals = ObjStringHashMap(Value).init(allocator),
@@ -90,7 +92,7 @@ pub fn init(allocator: std.mem.Allocator) Self {
     return vm;
 }
 
-fn currentChunk(self: *Self) *Chunk {
+inline fn currentChunk(self: *Self) *Chunk {
     return &self.frames.ptr.func.chunk;
 }
 
@@ -122,7 +124,7 @@ pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
 }
 
 pub fn run(self: *Self) !InterpretResult {
-    while (self.frames.ptr.ip < self.currentChunk().code.items.len) {
+    while (self.ip < self.currentChunk().code.items.len) {
         var instruction = self.readOp();
         switch (instruction) {
             .print => std.debug.print("{any}\n", .{self.stack.pop()}),
@@ -267,20 +269,24 @@ pub fn run(self: *Self) !InterpretResult {
             .jump_if_false => {
                 var jump_offset = self.readWord();
                 if (!valIsTruthy(self.stack.peek(0))) {
-                    self.frames.ptr.ip += jump_offset;
+                    self.ip += jump_offset;
+                    // self.frames.ptr.ip += jump_offset;
                 }
             },
             .jump => {
                 var jump_offset = self.readWord();
-                self.frames.ptr.ip += jump_offset;
+                self.ip += jump_offset;
+                // self.frames.ptr.ip += jump_offset;
             },
             .loop => {
                 var loop_offset = self.readWord();
-                self.frames.ptr.ip -= loop_offset;
+                self.ip -= loop_offset;
+                // self.frames.ptr.ip -= loop_offset;
             },
             .call => {
                 var count = self.readByte();
                 var func_value = self.stack.peek(count);
+                self.frames.ptr.ip = self.ip;
                 if (!self.callValue(func_value, count)) {
                     return InterpretResult.err;
                 }
@@ -290,6 +296,7 @@ pub fn run(self: *Self) !InterpretResult {
                 self.stack.ptr = self.frames.ptr.slots;
                 self.frames.count -= 1;
                 self.frames.ptr = &self.frames.items[self.frames.count - 1];
+                self.ip = self.frames.ptr.ip;
                 self.stack.push(retval);
             },
         }
@@ -305,6 +312,7 @@ fn call(self: *Self, func: *Obj.Function, arg_count: u8) bool {
 
     self.frames.items[self.frames.count] = CallFrame{ .func = func, .ip = 0, .slots = self.stack.ptr - arg_count - 1 };
     self.frames.ptr = &self.frames.items[self.frames.count];
+    self.ip = 0;
     self.frames.count += 1;
     return true;
 }
@@ -378,9 +386,8 @@ fn readOp(self: *Self) Op {
 }
 
 fn readByte(self: *Self) u8 {
-    var call_frame = self.frames.ptr;
-    var byte = self.currentChunk().readByte(call_frame.ip);
-    call_frame.ip += 1;
+    var byte = self.currentChunk().readByte(self.ip);
+    self.ip += 1;
     return byte;
 }
 
