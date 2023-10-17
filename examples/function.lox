@@ -5,4 +5,4 @@ fn fib(a) {
     return fib(a - 2) + fib(a - 1);
 }
 
-print fib(25);
+fib(35);

@@ -305,7 +305,6 @@ fn call(self: *Self, func: *Obj.Function, arg_count: u8) bool {
 
     self.frames.items[self.frames.count] = CallFrame{ .func = func, .ip = 0, .slots = self.stack.ptr - arg_count - 1 };
     self.frames.ptr = &self.frames.items[self.frames.count];
-    self.ip = 0;
     self.frames.count += 1;
     return true;
 }
