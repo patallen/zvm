@@ -1,0 +1,6 @@
+{
+    fn fib(n) {
+        return fib(1);
+    }
+    fib(1);
+}

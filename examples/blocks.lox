@@ -1,0 +1,15 @@
+var x = 420;
+{
+    fn balls() {
+        return 0;
+    }
+    {
+        var x = 69;
+        print x;
+        {
+            print x;
+        }
+    }
+    print x;
+    print balls();
+}
