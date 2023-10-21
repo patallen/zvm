@@ -139,6 +139,11 @@ fn emitReturn(self: *Self) !void {
     try self.currentChunk().writeOp(.kw_return, self.p.previous.loc.lineno);
 }
 
+fn emitClosure(self: *Self, value: Value) !void {
+    try self.emitOp(.closure);
+    try self.emitByte(try self.currentChunk().addConstant(value));
+}
+
 fn emitConstant(self: *Self, value: Value) !void {
     try self.emitOp(.constant);
     try self.emitByte(try self.currentChunk().addConstant(value));
@@ -496,7 +501,7 @@ fn function(self: *Self, func_type: FunctionType) !void {
     self.consume(.l_brace, "Expected '{' for after function decl;");
     try self.parseBlock();
     self.ctx = self.ctx.enclosing.?;
-    try self.emitConstant(Value.obj(&func.obj));
+    try self.emitClosure(Value.obj(&func.obj));
 }
 
 fn defineVariable(self: *Self, index: u8) !void {

@@ -76,7 +76,7 @@ const Self = @This();
 const CallFrame = struct {
     slots: [*]Value,
     ip: usize,
-    func: *Obj.Function,
+    closure: *Obj.Closure,
 };
 
 pub fn init(allocator: std.mem.Allocator) Self {
@@ -93,7 +93,7 @@ pub fn init(allocator: std.mem.Allocator) Self {
 }
 
 inline fn currentChunk(self: *Self) *Chunk {
-    return &self.frames.ptr.func.chunk;
+    return &self.frames.ptr.closure.func.chunk;
 }
 
 pub fn deinit(self: *Self) void {
@@ -118,8 +118,12 @@ pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
     var main = self.compileToChunk(source) catch {
         return .err;
     };
+    // create the main function, push & pop it from the stack for GC purposes
     self.stack.push(Value.obj(&main.obj));
-    _ = self.call(main, 0);
+    _ = self.stack.pop();
+    var closure = try Obj.Closure.init(self.allocator, main);
+    self.stack.push(Value.obj(&closure.obj));
+    _ = self.call(closure, 0);
     return try self.run();
 }
 
@@ -153,7 +157,7 @@ pub fn run(self: *Self) !InterpretResult {
                             var value = try concat(self.arena.allocator(), a, b);
                             self.stack.push(value);
                         },
-                        .native, .function => {
+                        .native, .function, .closure => {
                             self.runtimeError("Cannot add '{any}' to '{any}'\n", .{ a, b });
                             return .err;
                         },
@@ -299,18 +303,24 @@ pub fn run(self: *Self) !InterpretResult {
                 self.ip = self.frames.ptr.ip;
                 self.stack.push(retval);
             },
+            .closure => {
+                var func_value = self.currentChunk().getConstant(self.readByte());
+                var function = Obj.Function.fromObj(func_value.as.obj);
+                var closure = try Obj.Closure.init(self.allocator, function);
+                self.stack.push(Value.obj(&closure.obj));
+            },
         }
     }
     return .ok;
 }
 
-fn call(self: *Self, func: *Obj.Function, arg_count: u8) bool {
-    if (arg_count != func.arity) {
-        self.runtimeError("Wrong number of arguments provided.\n", .{});
+fn call(self: *Self, closure: *Obj.Closure, arg_count: u8) bool {
+    if (arg_count != closure.func.arity) {
+        self.runtimeError("Wrong number of arguments provided. Got {d}, expected {d}\n", .{ arg_count, closure.func.arity });
         return false;
     }
 
-    self.frames.items[self.frames.count] = CallFrame{ .func = func, .ip = 0, .slots = self.stack.ptr - arg_count - 1 };
+    self.frames.items[self.frames.count] = CallFrame{ .closure = closure, .ip = 0, .slots = self.stack.ptr - arg_count - 1 };
     self.frames.ptr = &self.frames.items[self.frames.count];
     self.ip = 0;
     self.frames.count += 1;
@@ -338,9 +348,9 @@ fn clockNative(arg_count: usize, args: []Value) Value {
 fn callValue(self: *Self, callee: Value, arg_count: u8) bool {
     if (callee.isType(.obj)) {
         switch (callee.as.obj.ty) {
-            .function => {
-                var function = callee.asFunctionObj();
-                return self.call(function, arg_count);
+            .closure => {
+                var closure = callee.asClosureObj();
+                return self.call(closure, arg_count);
             },
             .native => {
                 var native = callee.asNativeObj().func;
@@ -362,11 +372,11 @@ fn runtimeError(self: *Self, comptime message: []const u8, args: anytype) void {
         if (frame_no >= self.frames.count) {
             break;
         }
-        std.debug.print("[line {d}] in ", .{fr.func.chunk.lines.items[fr.ip]});
-        if (fr.func.name.bytes.len == 0) {
+        std.debug.print("[line {d}] in ", .{fr.closure.func.chunk.lines.items[fr.ip]});
+        if (fr.closure.func.name.bytes.len == 0) {
             std.debug.print("<script>\n", .{});
         } else {
-            std.debug.print("{s}()\n", .{fr.func.name.bytes});
+            std.debug.print("{s}()\n", .{fr.closure.func.name.bytes});
         }
     }
     std.debug.print("ERROR: " ++ message, args);

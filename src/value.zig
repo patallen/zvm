@@ -54,6 +54,11 @@ pub const Value = struct {
         return @fieldParentPtr(Obj.Native, "obj", self.asObj());
     }
 
+    pub fn asClosureObj(self: *const Value) *Obj.Closure {
+        assert(self.isObjType(.obj, .closure));
+        return @fieldParentPtr(Obj.Closure, "obj", self.asObj());
+    }
+
     pub fn asRawString(self: *const Value) []const u8 {
         return self.asStringObj().bytes;
     }
@@ -73,8 +78,9 @@ pub const Value = struct {
             },
             .obj => switch (self.as.obj.ty) {
                 .string => try writer.print("{s}", .{Obj.String.fromObj(self.as.obj).bytes}),
-                .function => try writer.print("function<{s}>", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
                 .native => try writer.print("native<{s}>", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
+                .function => try writer.print("function<{s}>", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
+                .closure => try writer.print("function<{s}>", .{Obj.Closure.fromObj(self.as.obj).func.name.bytes}),
             },
         };
     }

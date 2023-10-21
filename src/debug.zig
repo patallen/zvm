@@ -52,6 +52,7 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
         .jump => try jumpInstruction("JUMP", 1, chunk, offset),
         .loop => try jumpInstruction("LOOP", -1, chunk, offset),
         .call => try byteInstruction("CALL", chunk, offset),
+        .closure => try byteInstruction("CLOSURE", chunk, offset),
     };
 }
 fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) !usize {

@@ -6,7 +6,7 @@ ty: Type,
 
 const Self = @This();
 
-pub const Type = enum { string, function, native };
+pub const Type = enum { string, function, native, closure };
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     switch (self.ty) {
@@ -22,6 +22,10 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         },
         .native => {
             const typeobj = Native.fromObj(self);
+            allocator.destroy(typeobj);
+        },
+        .closure => {
+            const typeobj = Closure.fromObj(self);
             allocator.destroy(typeobj);
         },
     }
@@ -54,6 +58,24 @@ pub const Function = struct {
             .arity = 0,
             .chunk = Chunk.init(allocator),
             .name = undefined,
+        };
+        return self;
+    }
+};
+
+pub const Closure = struct {
+    obj: Self,
+    func: *Function,
+
+    pub fn fromObj(obj: *Self) *Closure {
+        return @fieldParentPtr(Closure, "obj", obj);
+    }
+
+    pub fn init(allocator: std.mem.Allocator, func: *Function) !*Closure {
+        var self = try allocator.create(Closure);
+        self.* = .{
+            .obj = .{ .ty = .closure },
+            .func = func,
         };
         return self;
     }
