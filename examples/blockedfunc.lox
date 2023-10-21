@@ -1,6 +1,14 @@
-{
-    fn fib(n) {
-        return fib(1);
+fn out() {
+    var a = 6;
+    var b = 7;
+    fn mid() {
+        var c = 8;
+        var d = 9;
+        fn in() {
+        }
+        return in();
     }
-    fib(1);
+    return mid();
 }
+
+out();

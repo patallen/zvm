@@ -78,9 +78,9 @@ pub const Value = struct {
             },
             .obj => switch (self.as.obj.ty) {
                 .string => try writer.print("{s}", .{Obj.String.fromObj(self.as.obj).bytes}),
-                .native => try writer.print("native<{s}>", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
-                .function => try writer.print("function<{s}>", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
-                .closure => try writer.print("function<{s}>", .{Obj.Closure.fromObj(self.as.obj).func.name.bytes}),
+                .native => try writer.print("fn {s}", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
+                .function => try writer.print("fn {s}", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
+                .closure => try writer.print("fn {s}", .{Obj.Closure.fromObj(self.as.obj).func.name.bytes}),
             },
         };
     }

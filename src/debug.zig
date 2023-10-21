@@ -52,7 +52,15 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
         .jump => try jumpInstruction("JUMP", 1, chunk, offset),
         .loop => try jumpInstruction("LOOP", -1, chunk, offset),
         .call => try byteInstruction("CALL", chunk, offset),
-        .closure => try byteInstruction("CLOSURE", chunk, offset),
+        .closure => {
+            var tmp_offset = offset;
+            tmp_offset += 1;
+            var constant = chunk.code.items[tmp_offset];
+            tmp_offset += 1;
+            var func_value = chunk.constants.items[constant];
+            print("{s:<16}{any} {any}\n", .{ "OP_CLOSURE", constant, func_value });
+            return tmp_offset;
+        },
     };
 }
 fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) !usize {

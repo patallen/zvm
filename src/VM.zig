@@ -10,7 +10,7 @@ const ObjStringHashMap = @import("./hashmap.zig").ObjStringHashMap;
 const concat = @import("./value.zig").concat;
 const copyString = Obj.copyString;
 
-const debuginstructions: bool = false;
+const debuginstructions: bool = true;
 
 const FRAMES_MAX: usize = 256;
 const STACK_MAX: usize = FRAMES_MAX * @as(usize, @intCast((std.math.maxInt(u8) + 1)));
@@ -44,17 +44,12 @@ const Stack = struct {
     }
 
     pub fn dump(self: *Stack) void {
-        std.debug.print(" [", .{});
-        for (&self.items) |ptr| {
-            if (ptr == self.ptr) {
-                break;
-            }
-            std.debug.print("{any}", .{ptr.*});
-            if (ptr != self.ptr - 1) {
-                std.debug.print(" | ", .{});
-            }
+        var ptr: [*]Value = &self.items;
+        while (ptr != self.ptr) : (ptr += 1) {
+            std.debug.print("[", .{});
+            std.debug.print("{any}", .{ptr[0]});
+            std.debug.print("]", .{});
         }
-        std.debug.print("]\n", .{});
     }
 };
 
@@ -129,6 +124,13 @@ pub fn interpret(self: *Self, source: []const u8) !InterpretResult {
 
 pub fn run(self: *Self) !InterpretResult {
     while (self.ip < self.currentChunk().code.items.len) {
+        if (debuginstructions) {
+            std.debug.print("           ", .{});
+            self.stack.dump();
+            std.debug.print("\n", .{});
+            _ = try debug.disassembleInstruction(self.currentChunk(), self.ip);
+        }
+
         var instruction = self.readOp();
         switch (instruction) {
             .print => std.debug.print("{any}\n", .{self.stack.pop()}),
