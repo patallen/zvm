@@ -1,14 +1,9 @@
-fn out() {
-    var a = 1;
-    var b = 2;
-
-    fn mid() {
-        var c = 3;
-        var d = 4;
-
-        fn in() {
-            var x = 100;
-            return a + c + b + d;
-        }
+fn outer() {
+    var x = "outside";
+    fn inner() {
+        print x;
     }
+    inner();
 }
+
+outer();

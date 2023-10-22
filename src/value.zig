@@ -59,6 +59,11 @@ pub const Value = struct {
         return @fieldParentPtr(Obj.Closure, "obj", self.asObj());
     }
 
+    pub fn asUpvalueObj(self: *const Value) *Obj.Upvalue {
+        assert(self.isObjType(.obj, .upvalue));
+        return @fieldParentPtr(Obj.Upvalue, "obj", self.asObj());
+    }
+
     pub fn asRawString(self: *const Value) []const u8 {
         return self.asStringObj().bytes;
     }
@@ -81,6 +86,7 @@ pub const Value = struct {
                 .native => try writer.print("fn {s}", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
                 .function => try writer.print("fn {s}", .{Obj.Function.fromObj(self.as.obj).name.bytes}),
                 .closure => try writer.print("fn {s}", .{Obj.Closure.fromObj(self.as.obj).func.name.bytes}),
+                .upvalue => try writer.print("upvalue", .{}),
             },
         };
     }

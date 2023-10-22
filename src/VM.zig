@@ -159,6 +159,9 @@ pub fn run(self: *Self) !InterpretResult {
                             var value = try concat(self.arena.allocator(), a, b);
                             self.stack.push(value);
                         },
+                        .upvalue => {
+                            // TODO: Something goes here.
+                        },
                         .native, .function, .closure => {
                             self.runtimeError("Cannot add '{any}' to '{any}'\n", .{ a, b });
                             return .err;
@@ -310,12 +313,33 @@ pub fn run(self: *Self) !InterpretResult {
                 var function = Obj.Function.fromObj(func_value.as.obj);
                 var closure = try Obj.Closure.init(self.allocator, function);
                 self.stack.push(Value.obj(&closure.obj));
+                for (0..closure.upvalues.len) |i| {
+                    var is_local = self.readByte();
+                    var index = self.readByte();
+                    if (is_local == 1) {
+                        closure.upvalues[i] = try self.captureUpvalue(&self.frames.ptr.slots[index]);
+                    } else {
+                        closure.upvalues[i] = self.frames.ptr.closure.upvalues[index];
+                    }
+                }
             },
-            .load_upvalue => {},
-            .set_upvalue => {},
+            .load_upvalue => {
+                var slot = self.readByte();
+                self.stack.push(self.frames.ptr.closure.upvalues[slot].location.*);
+            },
+            .set_upvalue => {
+                var slot = self.readByte();
+                self.frames.ptr.closure.upvalues[slot].location.* = self.stack.peek(0);
+                self.stack.push(self.frames.ptr.closure.upvalues[slot].location.*);
+            },
         }
     }
     return .ok;
+}
+
+fn captureUpvalue(self: *Self, value: *Value) !*Obj.Upvalue {
+    var upvalue = try Obj.Upvalue.init(self.allocator, value);
+    return upvalue;
 }
 
 fn call(self: *Self, closure: *Obj.Closure, arg_count: u8) bool {

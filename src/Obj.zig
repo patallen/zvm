@@ -6,7 +6,7 @@ ty: Type,
 
 const Self = @This();
 
-pub const Type = enum { string, function, native, closure };
+pub const Type = enum { string, function, native, closure, upvalue };
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     switch (self.ty) {
@@ -26,6 +26,11 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         },
         .closure => {
             const typeobj = Closure.fromObj(self);
+            allocator.free(typeobj.upvalues);
+            allocator.destroy(typeobj);
+        },
+        .upvalue => {
+            const typeobj = Upvalue.fromObj(self);
             allocator.destroy(typeobj);
         },
     }
@@ -67,16 +72,19 @@ pub const Function = struct {
 pub const Closure = struct {
     obj: Self,
     func: *Function,
+    upvalues: []*Upvalue,
 
     pub fn fromObj(obj: *Self) *Closure {
         return @fieldParentPtr(Closure, "obj", obj);
     }
 
     pub fn init(allocator: std.mem.Allocator, func: *Function) !*Closure {
+        var upvalues = try allocator.alloc(*Upvalue, func.upvalue_count);
         var self = try allocator.create(Closure);
         self.* = .{
             .obj = .{ .ty = .closure },
             .func = func,
+            .upvalues = upvalues,
         };
         return self;
     }
@@ -96,6 +104,25 @@ pub const Native = struct {
         self.* = .{
             .obj = .{ .ty = .native },
             .func = func,
+        };
+        return self;
+    }
+};
+
+/// Upvalue stores a pointer to a variable outside the scope of the current function (closures)
+pub const Upvalue = struct {
+    obj: Self,
+    location: *Value,
+
+    pub fn fromObj(obj: *Self) *Upvalue {
+        return @fieldParentPtr(Upvalue, "obj", obj);
+    }
+
+    pub fn init(allocator: std.mem.Allocator, location: *Value) !*Upvalue {
+        var self = try allocator.create(Upvalue);
+        self.* = .{
+            .obj = .{ .ty = .upvalue },
+            .location = location,
         };
         return self;
     }

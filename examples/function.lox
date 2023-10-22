@@ -1,3 +1,4 @@
+{
 fn fib(a) {
     if (a < 2) {
         return  a;
@@ -5,4 +6,6 @@ fn fib(a) {
     return fib(a - 2) + fib(a - 1);
 }
 
-print fib(30);
+print fib(35);
+
+}
