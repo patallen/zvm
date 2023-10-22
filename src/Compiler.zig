@@ -28,6 +28,13 @@ const Local = struct {
     depth: ?u8,
 };
 
+const Upvalue = struct {
+    // index into the local array in which the value lives
+    index: u8,
+    // Tracks whether or not the upvalue is located directly in the parent context or not.
+    is_local: bool,
+};
+
 pub const FunctionType = enum {
     script,
     function,
@@ -41,6 +48,7 @@ pub const CompileContext = struct {
     locals: [LOCALS_MAX]Local = undefined,
     local_count: u8 = 0,
     scope_depth: u8 = 0,
+    upvalues: [LOCALS_MAX]Upvalue = undefined,
 
     pub fn init(func: *Obj.Function, func_type: FunctionType, enclosing: ?*CompileContext, hint: []const u8) CompileContext {
         return .{
@@ -342,20 +350,6 @@ fn statement(self: *Self) Error!void {
     }
 }
 
-fn resolveLocal(self: *Self, tok: *Tokenizer.Token) ?u8 {
-    var i = self.ctx.local_count;
-    while (i > 0) : (i -= 1) {
-        var local = self.ctx.locals[i - 1];
-        if (identifiersEqual(local.name, tok.slice)) {
-            if (local.depth == null) {
-                self.p.errorAt(tok, "variable not fully initialized");
-            }
-            return i - 1;
-        }
-    }
-    return null;
-}
-
 fn beginScope(self: *Self) void {
     self.ctx.scope_depth += 1;
 }
@@ -596,15 +590,73 @@ fn computeAtom(self: *Self) Error!void {
     }
 }
 
+fn resolveLocal(self: *Self, ctx: *CompileContext, tok: *Tokenizer.Token) ?u8 {
+    var i = ctx.local_count;
+    while (i > 0) : (i -= 1) {
+        var local = ctx.locals[i - 1];
+        if (identifiersEqual(local.name, tok.slice)) {
+            if (local.depth == null) {
+                self.p.errorAt(tok, "variable not fully initialized");
+            }
+            return i - 1;
+        }
+    }
+    return null;
+}
+
+/// To resolve an Upvalue, we essentially search the parent CompileContext for a local
+/// with the name we are looking for.
+fn resolveUpvalue(self: *Self, tok: *Tokenizer.Token) ?u8 {
+    if (self.ctx.enclosing == null) return null;
+    var ctx = self.ctx.enclosing.?;
+
+    if (self.resolveLocal(ctx, tok)) |local| {
+        return self.addUpvalue(local, true);
+    }
+    return null;
+}
+
+/// To add an upvalue, we take in the index into the parent's local array and add it
+/// to our current CompileContext's upvalues array annotated with whether or not it
+/// was found as a local in the wrapping function. (We will eventually look further
+/// down the stack - not all will be found locally to the wrapping function)
+///
+/// We return the index of the created upvalue because it will be used as the operand to
+/// the SET_UPVALUE and LOAD_UPVALUE ops.
+fn addUpvalue(self: *Self, index: u8, is_local: bool) u8 {
+    var upvalue_count = self.ctx.func.upvalue_count;
+
+    // Check that we haven't already found the upvalue. We don't need to store the same
+    // upvalue multiple times. NOTE: I don't fully understand why we need to check if the
+    // found Upvalue is local or not.
+    for (0..upvalue_count) |i| {
+        var upvalue = self.ctx.upvalues[i];
+        if (upvalue.index == index and upvalue.is_local) return i;
+    }
+
+    if (upvalue_count == LOCALS_MAX) {
+        std.debug.print("ERROR: too many upvalues\n", .{});
+        return 0;
+    }
+
+    self.ctx.upvalues[upvalue_count].* = .{ .is_local = is_local, .index = index };
+    self.ctx.func.upvalue_count += 1;
+    return upvalue_count;
+}
+
 fn namedVariable(self: *Self) !void {
     var tok = self.p.previous;
     var arg: u8 = undefined;
     var set_op: Chunk.Op = undefined;
     var load_op: Chunk.Op = undefined;
-    if (self.resolveLocal(&tok)) |locarg| {
+    if (self.resolveLocal(self.ctx, &tok)) |locarg| {
         set_op = .set_local;
         load_op = .load_local;
         arg = locarg;
+    } else if (self.resolveUpvalue(&tok)) |uparg| {
+        set_op = .set_upvalue;
+        load_op = .load_upvalue;
+        arg = uparg;
     } else {
         arg = try self.identifierConstant(&tok);
         set_op = .set_global;
@@ -662,3 +714,32 @@ fn identifiersEqual(a: []const u8, b: []const u8) bool {
     if (a.len != b.len) return false;
     return std.mem.eql(u8, a, b);
 }
+
+//upvalue
+// * refers to a local variable in an enclosing function
+// * every closure maintains an array of upvalues
+// * the upvalue points to the original value on the stack
+
+//
+//               *----->|Function|
+//               |
+//        *--|Closure|------v
+//        |             |Upvalues|---->|Upvalue|--*
+//        |                                       |
+// [var][fun][...][...]...                        |
+//   ^--------------------------------------------*
+
+// Summary
+// We've got a function on the stack `inner()`. `inner()` was defined within the scope of
+// another function, `outer()`. `inner()` references variables that are defined in the scope
+// `outer()`. Each closure maintains an array of "Upvalues". Upvalues are basically just
+// a pointer to an otherwise inaccessable variable on the stack.
+
+// Without Upvalues, any non-global variable that is not defined within the function itself
+// is basically invisible. At compile time, in order to resolve an identifier, we walk
+// backwards through the function's scopes searching for a corresponding variable. If we
+// don't find one, it is assumed to be a global.
+
+// We need to update our variable resolution to attempt to resolve a variable in the scope
+// of the wrapping function. If the "upvalue" is resolved in the parent scope, we use
+// two new ops (set_upvalue, load_upvalue) to direct the VM where to get or set the upvalue.
