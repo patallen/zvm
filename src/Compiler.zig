@@ -492,10 +492,22 @@ fn function(self: *Self, func_type: FunctionType) !void {
     }
 
     self.consume(.r_paren, "Expected closing paren after function params");
-    self.consume(.l_brace, "Expected '{' for after function decl;");
+    self.consume(.l_brace, "Expected '{' after function signature");
     try self.parseBlock();
+    var old_ctx = self.ctx;
+    _ = old_ctx;
     self.ctx = self.ctx.enclosing.?;
+    var ip = self.ctx.func.chunk.code.items.len;
     try self.emitClosure(Value.obj(&func.obj));
+
+    std.debug.print("{any}\n", .{self.ctx.upvalues[0..func.upvalue_count]});
+    for (0..func.upvalue_count) |i| {
+        try self.emitByte(if (self.ctx.upvalues[i].is_local) 1 else 0);
+        std.debug.print("new ctx: local: {}, index: {d}\n", .{ self.ctx.upvalues[i].is_local, self.ctx.upvalues[i].index });
+        std.debug.print("old ctx: local: {}, index: {d}\n", .{ self.ctx.upvalues[i].is_local, self.ctx.upvalues[i].index });
+        try self.emitByte(self.ctx.upvalues[i].index);
+    }
+    _ = try debug.disassembleInstruction(self.currentChunk(), ip);
 }
 
 fn defineVariable(self: *Self, index: u8) !void {
@@ -508,7 +520,7 @@ fn defineVariable(self: *Self, index: u8) !void {
 }
 
 fn addLocal(self: *Self, tok: Tokenizer.Token) !void {
-    if (self.ctx.local_count >= 256) {
+    if (self.ctx.local_count >= LOCALS_MAX) {
         std.debug.print("Too many locals... this should be made an error\n", .{});
         return;
     }
@@ -606,12 +618,19 @@ fn resolveLocal(self: *Self, ctx: *CompileContext, tok: *Tokenizer.Token) ?u8 {
 
 /// To resolve an Upvalue, we essentially search the parent CompileContext for a local
 /// with the name we are looking for.
-fn resolveUpvalue(self: *Self, tok: *Tokenizer.Token) ?u8 {
-    if (self.ctx.enclosing == null) return null;
-    var ctx = self.ctx.enclosing.?;
+/// If we don't find the value in the enclosing context's locals, we try to find it in
+/// the enclosing context's upvalues. This step is done recursively... the result is
+/// a chain of upvalues eventually pointing to a local in an anscestor context.
+fn resolveUpvalue(self: *Self, ctx: *CompileContext, tok: *Tokenizer.Token) ?u8 {
+    if (ctx.enclosing == null) return null;
 
-    if (self.resolveLocal(ctx, tok)) |local| {
-        return self.addUpvalue(local, true);
+    if (self.resolveLocal(ctx.enclosing.?, tok)) |local| {
+        std.debug.print("found locally\n", .{});
+        return self.addUpvalue(ctx, local, true);
+    }
+    if (self.resolveUpvalue(ctx.enclosing.?, tok)) |upvalue| {
+        std.debug.print("found non-locally\n", .{});
+        return self.addUpvalue(ctx, upvalue, false);
     }
     return null;
 }
@@ -623,15 +642,20 @@ fn resolveUpvalue(self: *Self, tok: *Tokenizer.Token) ?u8 {
 ///
 /// We return the index of the created upvalue because it will be used as the operand to
 /// the SET_UPVALUE and LOAD_UPVALUE ops.
-fn addUpvalue(self: *Self, index: u8, is_local: bool) u8 {
-    var upvalue_count = self.ctx.func.upvalue_count;
+fn addUpvalue(self: *Self, ctx: *CompileContext, index: u8, is_local: bool) u8 {
+    std.debug.print("called addUpvalue({s}, {d}, {})\n", .{ ctx.func.name.bytes, index, is_local });
+    _ = self;
+    var upvalue_count = ctx.func.upvalue_count;
 
     // Check that we haven't already found the upvalue. We don't need to store the same
     // upvalue multiple times. NOTE: I don't fully understand why we need to check if the
     // found Upvalue is local or not.
     for (0..upvalue_count) |i| {
-        var upvalue = self.ctx.upvalues[i];
-        if (upvalue.index == index and upvalue.is_local) return i;
+        var upvalue = ctx.upvalues[i];
+        if (upvalue.index == index and upvalue.is_local == is_local) {
+            std.debug.print("FOUND EXISTING UPVALUE: {d}\n", .{i});
+            return @intCast(i);
+        }
     }
 
     if (upvalue_count == LOCALS_MAX) {
@@ -639,8 +663,9 @@ fn addUpvalue(self: *Self, index: u8, is_local: bool) u8 {
         return 0;
     }
 
-    self.ctx.upvalues[upvalue_count].* = .{ .is_local = is_local, .index = index };
-    self.ctx.func.upvalue_count += 1;
+    ctx.upvalues[upvalue_count].is_local = is_local;
+    ctx.upvalues[upvalue_count].index = index;
+    ctx.func.upvalue_count += 1;
     return upvalue_count;
 }
 
@@ -653,7 +678,7 @@ fn namedVariable(self: *Self) !void {
         set_op = .set_local;
         load_op = .load_local;
         arg = locarg;
-    } else if (self.resolveUpvalue(&tok)) |uparg| {
+    } else if (self.resolveUpvalue(self.ctx, &tok)) |uparg| {
         set_op = .set_upvalue;
         load_op = .load_upvalue;
         arg = uparg;

@@ -10,7 +10,7 @@ const ObjStringHashMap = @import("./hashmap.zig").ObjStringHashMap;
 const concat = @import("./value.zig").concat;
 const copyString = Obj.copyString;
 
-const debuginstructions: bool = true;
+const debuginstructions: bool = false;
 
 const FRAMES_MAX: usize = 256;
 const STACK_MAX: usize = FRAMES_MAX * @as(usize, @intCast((std.math.maxInt(u8) + 1)));
@@ -311,6 +311,8 @@ pub fn run(self: *Self) !InterpretResult {
                 var closure = try Obj.Closure.init(self.allocator, function);
                 self.stack.push(Value.obj(&closure.obj));
             },
+            .load_upvalue => {},
+            .set_upvalue => {},
         }
     }
     return .ok;

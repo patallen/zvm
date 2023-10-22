@@ -26,6 +26,8 @@ pub const Op = enum(u8) {
     loop,
     call,
     closure,
+    set_upvalue,
+    load_upvalue,
 };
 
 pub const Byte = u8;

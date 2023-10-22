@@ -1,14 +1,9 @@
 fn out() {
     var a = 6;
-    var b = 7;
     fn mid() {
-        var c = 8;
-        var d = 9;
-        fn in() {
-        }
-        return in();
+        return a;
     }
-    return mid();
+    return mid;
 }
 
-out();
+out()();

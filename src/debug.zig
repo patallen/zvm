@@ -59,8 +59,23 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
             tmp_offset += 1;
             var func_value = chunk.constants.items[constant];
             print("{s:<16}{any} {any}\n", .{ "OP_CLOSURE", constant, func_value });
+
+            var func = func_value.asFunctionObj();
+            for (0..func.upvalue_count) |_| {
+                var is_local = chunk.code.items[tmp_offset];
+                tmp_offset += 1;
+                var index = chunk.code.items[tmp_offset];
+                tmp_offset += 1;
+                print(" {d:0>4}:      |                    {s} {d}\n", .{
+                    offset,
+                    if (is_local == 1) "local" else "upvalue",
+                    index,
+                });
+            }
             return tmp_offset;
         },
+        .set_upvalue => try byteInstruction("SET_UPVALUE", chunk, offset),
+        .load_upvalue => try byteInstruction("LOAD_UPVALUE", chunk, offset),
     };
 }
 fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) !usize {

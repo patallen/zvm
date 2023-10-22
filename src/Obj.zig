@@ -46,6 +46,7 @@ pub const Function = struct {
     arity: u8,
     chunk: Chunk,
     name: *Self.String,
+    upvalue_count: u8 = 0,
 
     pub fn fromObj(obj: *Self) *Function {
         return @fieldParentPtr(Function, "obj", obj);
