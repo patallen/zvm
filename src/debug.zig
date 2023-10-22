@@ -66,8 +66,8 @@ pub fn disassembleInstruction(chunk: *Chunk, offset: usize) !usize {
                 tmp_offset += 1;
                 var index = chunk.code.items[tmp_offset];
                 tmp_offset += 1;
-                print(" {d:0>4}:      |                    {s} {d}\n", .{
-                    offset,
+                print(" {d:0>4}:     |                    {s} {d}\n", .{
+                    tmp_offset,
                     if (is_local == 1) "local" else "upvalue",
                     index,
                 });

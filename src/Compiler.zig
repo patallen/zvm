@@ -494,18 +494,14 @@ fn function(self: *Self, func_type: FunctionType) !void {
     self.consume(.r_paren, "Expected closing paren after function params");
     self.consume(.l_brace, "Expected '{' after function signature");
     try self.parseBlock();
-    var old_ctx = self.ctx;
-    _ = old_ctx;
     self.ctx = self.ctx.enclosing.?;
     var ip = self.ctx.func.chunk.code.items.len;
     try self.emitClosure(Value.obj(&func.obj));
 
-    std.debug.print("{any}\n", .{self.ctx.upvalues[0..func.upvalue_count]});
     for (0..func.upvalue_count) |i| {
-        try self.emitByte(if (self.ctx.upvalues[i].is_local) 1 else 0);
-        std.debug.print("new ctx: local: {}, index: {d}\n", .{ self.ctx.upvalues[i].is_local, self.ctx.upvalues[i].index });
-        std.debug.print("old ctx: local: {}, index: {d}\n", .{ self.ctx.upvalues[i].is_local, self.ctx.upvalues[i].index });
-        try self.emitByte(self.ctx.upvalues[i].index);
+        // EMIT UPVALUES FROM COMPILED CONTEXT, NOT THE CURRENT ONE!!
+        try self.emitByte(if (ctx.upvalues[i].is_local) 1 else 0);
+        try self.emitByte(ctx.upvalues[i].index);
     }
     _ = try debug.disassembleInstruction(self.currentChunk(), ip);
 }
@@ -625,11 +621,9 @@ fn resolveUpvalue(self: *Self, ctx: *CompileContext, tok: *Tokenizer.Token) ?u8 
     if (ctx.enclosing == null) return null;
 
     if (self.resolveLocal(ctx.enclosing.?, tok)) |local| {
-        std.debug.print("found locally\n", .{});
         return self.addUpvalue(ctx, local, true);
     }
     if (self.resolveUpvalue(ctx.enclosing.?, tok)) |upvalue| {
-        std.debug.print("found non-locally\n", .{});
         return self.addUpvalue(ctx, upvalue, false);
     }
     return null;
@@ -643,7 +637,6 @@ fn resolveUpvalue(self: *Self, ctx: *CompileContext, tok: *Tokenizer.Token) ?u8 
 /// We return the index of the created upvalue because it will be used as the operand to
 /// the SET_UPVALUE and LOAD_UPVALUE ops.
 fn addUpvalue(self: *Self, ctx: *CompileContext, index: u8, is_local: bool) u8 {
-    std.debug.print("called addUpvalue({s}, {d}, {})\n", .{ ctx.func.name.bytes, index, is_local });
     _ = self;
     var upvalue_count = ctx.func.upvalue_count;
 
@@ -653,7 +646,6 @@ fn addUpvalue(self: *Self, ctx: *CompileContext, index: u8, is_local: bool) u8 {
     for (0..upvalue_count) |i| {
         var upvalue = ctx.upvalues[i];
         if (upvalue.index == index and upvalue.is_local == is_local) {
-            std.debug.print("FOUND EXISTING UPVALUE: {d}\n", .{i});
             return @intCast(i);
         }
     }
